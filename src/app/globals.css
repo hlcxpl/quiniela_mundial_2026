@@ -33,16 +33,23 @@
   margin: 0;
 }
 
+html {
+  background-color: var(--bg-base);
+}
+
 html, body {
   width: 100%;
   min-height: 100vh;
-  background-color: var(--bg-base);
   color: var(--text-primary);
   font-family: var(--font-sans);
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   overflow-x: hidden;
   zoom: 80%;
+}
+
+body {
+  background-color: transparent;
 }
 
 body::before {
