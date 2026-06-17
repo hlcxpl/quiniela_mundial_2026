@@ -1,5 +1,16 @@
 import { query, ensureInit } from './db';
 
+function parseMatchDate(dateStr: string): Date {
+  if (!dateStr) return new Date();
+  if (dateStr.includes('T') || dateStr.includes(' ') || dateStr.includes(':')) {
+    if (dateStr.endsWith('Z') || (dateStr.includes('-') && dateStr.lastIndexOf('-') > 7) || dateStr.includes('+')) {
+      return new Date(dateStr);
+    }
+    return new Date(`${dateStr.replace(' ', 'T')}-04:00`);
+  }
+  return new Date(`${dateStr}T23:59:59-04:00`);
+}
+
 function generateRealisticScore(): number {
   const rand = Math.random();
   if (rand < 0.22) return 0; // 22% de probabilidad de 0 goles
@@ -12,35 +23,31 @@ function generateRealisticScore(): number {
 
 /**
  * Revisa la base de datos y simula los partidos que ya deberían haberse jugado
- * (es decir, cuya fecha de juego es menor o igual a hoy en la zona horaria del torneo)
+ * (es decir, cuya fecha de juego + 2 horas es menor o igual a la hora actual)
  * pero que siguen marcados como 'UPCOMING'.
  */
 export async function autoUpdateMatches() {
   try {
     await ensureInit();
 
-    // Obtenemos la fecha de hoy en la zona horaria del torneo (America/Mexico_City)
-    const todayStr = new Intl.DateTimeFormat('en-CA', {
-      timeZone: 'America/Mexico_City',
-      year: 'numeric',
-      month: '2-digit',
-      day: '2-digit'
-    }).format(new Date());
-
-    // Buscamos partidos que ya expiraron pero siguen marcados como 'UPCOMING'
+    // Buscamos todos los partidos marcados como 'UPCOMING'
     const res = await query(
-      "SELECT id, home_score, away_score, home_team, away_team, match_date FROM matches WHERE status = 'UPCOMING' AND match_date <= $1",
-      [todayStr]
+      "SELECT id, home_score, away_score, home_team, away_team, match_date FROM matches WHERE status = 'UPCOMING'"
     );
 
-    const upcomingMatches = res.rows;
-    if (upcomingMatches.length === 0) {
+    const now = new Date();
+    // Filtramos los partidos que ya deberían haber terminado (2 horas desde el kickoff)
+    const expiredMatches = res.rows.filter(match => {
+      const kickoff = parseMatchDate(match.match_date);
+      const twoHoursLater = new Date(kickoff.getTime() + 2 * 60 * 60 * 1000);
+      return twoHoursLater <= now;
+    });
+
+    if (expiredMatches.length === 0) {
       return;
     }
 
-    console.log(`[AutoUpdater] Se encontraron ${upcomingMatches.length} partidos pendientes por jugar al día ${todayStr}. Resolviendo...`);
-
-    for (const match of upcomingMatches) {
+    for (const match of expiredMatches) {
       let homeScore = match.home_score;
       let awayScore = match.away_score;
 
