@@ -1165,7 +1165,7 @@ export default function QuinielaPage() {
       </div>
 
       {/* Subtle dark overlay for text readability */}
-      <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, zIndex: -1, pointerEvents: 'none', background: 'rgba(4, 8, 15, 0.45)' }} />
+      <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, zIndex: -1, pointerEvents: 'none', background: 'rgba(4, 8, 15, 0.62)' }} />
 
       {/* Interactive Tutorial Overlay */}
       {showTutorial && (

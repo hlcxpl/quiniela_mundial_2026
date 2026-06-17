@@ -383,7 +383,7 @@
 }
 
 .matchCard {
-  background: rgba(6, 11, 19, 0.5);
+  background: rgba(4, 8, 15, 0.78);
   border: 1px solid var(--border-color);
   border-radius: 12px;
   padding: 0.8rem 1rem;
@@ -794,7 +794,7 @@
 .koScoreInput {
   width: 34px;
   height: 26px;
-  background: rgba(255, 255, 255, 0.05);
+  background: rgba(4, 8, 15, 0.85);
   border: 1px solid var(--border-color);
   border-radius: 6px;
   color: var(--text-primary);

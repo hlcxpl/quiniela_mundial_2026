@@ -3,9 +3,9 @@
 :root {
   --bg-base: #04080f;
   --bg-gradient: radial-gradient(circle at 50% 0%, #081e18 0%, #04080f 80%);
-  --bg-surface: rgba(10, 18, 30, 0.6);
-  --bg-surface-solid: #080f1d;
-  --bg-surface-hover: rgba(18, 32, 53, 0.75);
+  --bg-surface: rgba(4, 8, 15, 0.82);
+  --bg-surface-solid: #060c1a;
+  --bg-surface-hover: rgba(6, 14, 28, 0.90);
   --primary: #10b981;
   --primary-hover: #059669;
   --primary-glow: rgba(16, 185, 129, 0.15);
@@ -80,7 +80,7 @@ a {
 }
 
 ::-webkit-scrollbar-track {
-  background: rgba(0, 0, 0, 0.2);
+  background: rgba(4, 8, 15, 0.78);
 }
 
 ::-webkit-scrollbar-thumb {
@@ -89,7 +89,7 @@ a {
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: rgba(255, 255, 255, 0.25);
+  background: rgba(4, 8, 15, 0.85);
 }
 
 /* Animations */
