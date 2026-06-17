@@ -1148,17 +1148,24 @@ export default function QuinielaPage() {
 
   return (
     <>
-      <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, zIndex: -1, pointerEvents: 'none', overflow: 'hidden' }}>
+      {/* Dark base layer - always visible, never white */}
+      <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, zIndex: -3, background: '#04080f', pointerEvents: 'none' }} />
+
+      {/* Background image layer */}
+      <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, zIndex: -2, pointerEvents: 'none', overflow: 'hidden' }}>
         <Image
           src="/images/world_cup_bg.jpg"
           alt="World Cup 2026 Background"
           fill
           priority
-          quality={70}
+          quality={75}
           sizes="100vw"
-          style={{ objectFit: 'cover', opacity: 0.22 }}
+          style={{ objectFit: 'cover', opacity: 0.55 }}
         />
       </div>
+
+      {/* Subtle dark overlay for text readability */}
+      <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, zIndex: -1, pointerEvents: 'none', background: 'rgba(4, 8, 15, 0.45)' }} />
 
       {/* Interactive Tutorial Overlay */}
       {showTutorial && (

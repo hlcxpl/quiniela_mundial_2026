@@ -36,9 +36,7 @@
 html, body {
   width: 100%;
   min-height: 100vh;
-  background-color: var(--bg-base);
-  background-image: var(--bg-gradient);
-  background-attachment: fixed;
+  background-color: transparent;
   color: var(--text-primary);
   font-family: var(--font-sans);
   -webkit-font-smoothing: antialiased;
