@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import Image from 'next/image';
 import { Match, Prediction, Participant, GroupStandingRow, ParticipantScore, KnockoutMatch } from '../types';
 import { TEAMS, GROUPS } from '../data/initialData';
@@ -8,7 +8,9 @@ import {
   calculateGroupStandings, 
   getBestThirdPlaceTeams, 
   getRoundOf32Matchups,
-  calculateParticipantScore
+  calculateParticipantScore,
+  getCompleteKnockoutMatches,
+  calculateKnockoutMatchPoints
 } from '../utils/calculations';
 import styles from './page.module.css';
 
@@ -24,6 +26,7 @@ export default function QuinielaPage() {
   const [activeTab, setActiveTab] = useState<'groups' | 'knockout' | 'leaderboard' | 'admin' | 'rules'>('groups');
   const [activeGroup, setActiveGroup] = useState<string>('A');
   const [bracketZoom, setBracketZoom] = useState<number>(0.7);
+  const [adminSubTab, setAdminSubTab] = useState<'groups' | 'knockout'>('groups');
 
   // Backend Data State
   const [participants, setParticipants] = useState<Participant[]>([]);
@@ -32,6 +35,7 @@ export default function QuinielaPage() {
   const [predictions, setPredictions] = useState<Prediction[]>([]);
   const [knockoutPredictions, setKnockoutPredictions] = useState<Record<string, string>>({});
   const [knockoutScores, setKnockoutScores] = useState<Record<string, { home: number | ''; away: number | '' }>>({});
+  const [knockoutResults, setKnockoutResults] = useState<Record<string, { winnerTeam: string; homeScore: number | ''; awayScore: number | '' }>>({});
 
   // Leaderboard State
   const [leaderboard, setLeaderboard] = useState<any[]>([]);
@@ -50,7 +54,7 @@ export default function QuinielaPage() {
   const [news, setNews] = useState<any[]>([]);
   const [newsLoading, setNewsLoading] = useState<boolean>(true);
 
-  const fetchLeaderboard = async () => {
+  const fetchLeaderboard = useCallback(async () => {
     try {
       setLeaderboardLoading(true);
       const res = await fetch('/api/leaderboard');
@@ -63,7 +67,7 @@ export default function QuinielaPage() {
       console.error('Error fetching leaderboard:', e);
       setLeaderboardLoading(false);
     }
-  };
+  }, []);
 
   const handleTabChange = (tab: 'groups' | 'knockout' | 'leaderboard' | 'admin' | 'rules') => {
     setActiveTab(tab);
@@ -143,7 +147,7 @@ export default function QuinielaPage() {
   }, []);
 
   // Fetch initial database data
-  const fetchData = async () => {
+  const fetchData = useCallback(async () => {
     try {
       setLoading(true);
       // Fetch participants list
@@ -156,8 +160,16 @@ export default function QuinielaPage() {
       const matchData = await matchRes.json();
       setMatches(matchData);
 
+      // Fetch official knockout results
+      const koResultsRes = await fetch('/api/knockout-results');
+      let koResultsData = {};
+      if (koResultsRes.ok) {
+        koResultsData = await koResultsRes.json();
+        setKnockoutResults(koResultsData);
+      }
+
       // Fetch predictions for the active view
-      const activeId = selectedParticipantId || (currentUser ? currentUser.id : (partData.length > 0 ? partData[0].id : null));
+      const activeId = selectedParticipantIdRef.current || (currentUserRef.current ? currentUserRef.current.id : null);
       if (activeId) {
         const predRes = await fetch(`/api/predictions?participantId=${activeId}`);
         const predData = await predRes.json();
@@ -180,7 +192,18 @@ export default function QuinielaPage() {
       showStatus('Error al cargar datos del servidor', 'error');
       setLoading(false);
     }
-  };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Keep refs in sync so fetchData/polling can read latest values without being in deps
+  const currentUserRef = useRef(currentUser);
+  const selectedParticipantIdRef = useRef(selectedParticipantId);
+  const matchesRef = useRef(matches);
+  const activeTabRef = useRef(activeTab);
+  useEffect(() => { currentUserRef.current = currentUser; }, [currentUser]);
+  useEffect(() => { selectedParticipantIdRef.current = selectedParticipantId; }, [selectedParticipantId]);
+  useEffect(() => { matchesRef.current = matches; }, [matches]);
+  useEffect(() => { activeTabRef.current = activeTab; }, [activeTab]);
 
   // Trigger fetch when mount, or when selected participant shifts
   useEffect(() => {
@@ -189,6 +212,8 @@ export default function QuinielaPage() {
     } else {
       setLoading(false);
     }
+  // fetchData is stable (useCallback with [] deps), so this is safe
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentUser, selectedParticipantId]);
 
   // Check if user has seen tutorial once logged in
@@ -229,6 +254,10 @@ export default function QuinielaPage() {
   };
 
   // Smart Polling Effect to update scores dynamically
+  // IMPORTANT: We do NOT put `matches` or `activeTab` in deps here.
+  // Instead we use refs (matchesRef, activeTabRef) so this effect only
+  // runs once on mount (per user login) and doesn't re-trigger every
+  // time fetchData updates matches state — which was the infinite loop.
   useEffect(() => {
     if (!currentUser) return;
     
@@ -239,14 +268,15 @@ export default function QuinielaPage() {
       if (timerId) clearTimeout(timerId);
       if (intervalId) clearInterval(intervalId);
 
-      if (!matches || matches.length === 0) return;
+      const currentMatches = matchesRef.current;
+      if (!currentMatches || currentMatches.length === 0) return;
 
       const now = new Date();
       let hasLiveMatch = false;
       let nextKickoffTime: Date | null = null;
       let expectedMatchEndTime: Date | null = null;
 
-      matches.forEach(match => {
+      currentMatches.forEach(match => {
         try {
           const kickoff = parseMatchDateChile(match.matchDate);
           // Standard soccer match duration including halftime & extra time = ~130 minutes
@@ -277,7 +307,7 @@ export default function QuinielaPage() {
         // Sync immediately once
         fetch('/api/sync').then(() => {
           fetchData();
-          if (activeTab === 'leaderboard') fetchLeaderboard();
+          if (activeTabRef.current === 'leaderboard') fetchLeaderboard();
         }).catch(err => console.error('Error during initial live sync:', err));
 
         intervalId = setInterval(async () => {
@@ -287,7 +317,7 @@ export default function QuinielaPage() {
             console.error('Error during auto-sync:', e);
           }
           fetchData();
-          if (activeTab === 'leaderboard') fetchLeaderboard();
+          if (activeTabRef.current === 'leaderboard') fetchLeaderboard();
         }, 4 * 60 * 1000); // 4 minutes
       } else {
         // Find the next closest event to trigger a single update (either a kickoff or match end)
@@ -305,7 +335,7 @@ export default function QuinielaPage() {
             console.log(`No hay partidos en curso. Programando próxima actualización en ${Math.round(msUntilTrigger / 1000)}s (${(nextTriggerTime as Date).toISOString()})`);
             timerId = setTimeout(() => {
               fetchData();
-              if (activeTab === 'leaderboard') fetchLeaderboard();
+              if (activeTabRef.current === 'leaderboard') fetchLeaderboard();
               runPollingLogic(); // Recalculate states
             }, msUntilTrigger);
           }
@@ -315,13 +345,17 @@ export default function QuinielaPage() {
       }
     };
 
-    runPollingLogic();
+    // Delay slightly to ensure matchesRef is populated after initial fetchData
+    const initTimer = setTimeout(runPollingLogic, 2000);
 
     return () => {
+      clearTimeout(initTimer);
       if (timerId) clearTimeout(timerId);
       if (intervalId) clearInterval(intervalId);
     };
-  }, [matches, activeTab, currentUser]);
+  // Only re-run when the user changes (login/logout)
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentUser]);
 
   // Alert/Status helper
   const showStatus = (text: string, type: 'success' | 'error') => {
@@ -526,6 +560,35 @@ export default function QuinielaPage() {
     } catch (error) {
       console.error('Error updating match score:', error);
       showStatus('Error de red al actualizar marcador', 'error');
+    }
+  };
+
+  // Update actual knockout match score and winner (Admin Tab)
+  const handleAdminKnockoutScoreUpdate = async (matchId: string, homeVal: string, awayVal: string, winnerTeam: string) => {
+    try {
+      const res = await fetch('/api/knockout-results', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          matchId,
+          homeScore: homeVal === '' ? null : parseInt(homeVal, 10),
+          awayScore: awayVal === '' ? null : parseInt(awayVal, 10),
+          winnerTeam: winnerTeam || null
+        })
+      });
+
+      if (res.ok) {
+        showStatus('Resultado oficial de eliminatoria actualizado', 'success');
+        // Refresh matching data
+        fetchData();
+        fetchLeaderboard();
+      } else {
+        const data = await res.json();
+        showStatus(data.error || 'Error al actualizar resultado', 'error');
+      }
+    } catch (error) {
+      console.error('Error updating admin knockout result:', error);
+      showStatus('Error de red al actualizar resultado', 'error');
     }
   };
 
@@ -818,9 +881,102 @@ export default function QuinielaPage() {
   }
 
   // Calculations derived from current state
-  const scoreCard: ParticipantScore = selectedParticipantId
+  // 1. Build actual official bracket matchups
+  const actualKoWinnersMap: Record<string, string> = {};
+  Object.keys(knockoutResults).forEach(matchId => {
+    actualKoWinnersMap[matchId] = knockoutResults[matchId]?.winnerTeam || '';
+  });
+  const actualKoMatches = getCompleteKnockoutMatches(matches, [], actualKoWinnersMap);
+
+  // 2. Build participant's predicted bracket matchups
+  const participantKoMatches = getCompleteKnockoutMatches(matches, predictions, knockoutPredictions);
+
+  // 3. Compute points and accumulate
+  let koPointsTotal = 0;
+  let koExactCount = 0;
+  let koOutcomeCount = 0;
+  let koWrongCount = 0;
+
+  // Let's create an ordered array of matches to compute sequential cumulative scores
+  const koMatchIdsOrder: string[] = [
+    ...Array.from({ length: 16 }, (_, i) => `R32-${i + 1}`),
+    ...Array.from({ length: 8 }, (_, i) => `R16-${i + 1}`),
+    ...Array.from({ length: 4 }, (_, i) => `QF-${i + 1}`),
+    ...Array.from({ length: 2 }, (_, i) => `SF-${i + 1}`),
+    'F'
+  ];
+
+  // We want to calculate points won at each step, explanation, and cumulative total
+  const koMatchesPointsInfo: Record<string, {
+    pointsGained: number;
+    explanation: string;
+    actualScore: string;
+    actualWinner: string;
+    cumulativePoints: number;
+  }> = {};
+
+  const groupStageScoreCard = selectedParticipantId
     ? calculateParticipantScore(selectedParticipantId, activeParticipantName, matches, predictions)
     : { participantId: 0, name: 'N/A', points: 0, exactCount: 0, outcomeCount: 0, wrongCount: 0, totalPredictions: 0 };
+
+  let runningCumulativePoints = groupStageScoreCard.points;
+
+  koMatchIdsOrder.forEach(matchId => {
+    const actualResult = knockoutResults[matchId];
+    const actualMatch = actualKoMatches[matchId];
+    const predMatch = participantKoMatches[matchId];
+
+    if (actualResult && actualMatch && predMatch) {
+      const predWinner = knockoutPredictions[matchId] || '';
+      const predScores = knockoutScores[matchId] || { home: '', away: '' };
+
+      const { points: matchPts, explanation } = calculateKnockoutMatchPoints(
+        predMatch.team1,
+        predMatch.team2,
+        predScores.home,
+        predScores.away,
+        predWinner,
+        actualMatch.team1,
+        actualMatch.team2,
+        actualResult.homeScore,
+        actualResult.awayScore,
+        actualResult.winnerTeam
+      );
+
+      // Check if match was actually played/recorded
+      const isPlayed = actualResult.homeScore !== '' && actualResult.homeScore !== null &&
+                       actualResult.awayScore !== '' && actualResult.awayScore !== null &&
+                       !!actualResult.winnerTeam;
+
+      if (isPlayed) {
+        koPointsTotal += matchPts;
+        if (matchPts === 3) koExactCount += 1;
+        else if (matchPts === 1) koOutcomeCount += 1;
+        else koWrongCount += 1;
+
+        runningCumulativePoints += matchPts;
+
+        koMatchesPointsInfo[matchId] = {
+          pointsGained: matchPts,
+          explanation,
+          actualScore: `${actualMatch.team1} ${actualResult.homeScore} - ${actualResult.awayScore} ${actualMatch.team2}`,
+          actualWinner: actualResult.winnerTeam,
+          cumulativePoints: runningCumulativePoints
+        };
+      }
+    }
+  });
+
+  // Combined score card (Group + Knockout)
+  const scoreCard: ParticipantScore = {
+    participantId: groupStageScoreCard.participantId,
+    name: groupStageScoreCard.name,
+    points: groupStageScoreCard.points + koPointsTotal,
+    exactCount: groupStageScoreCard.exactCount + koExactCount,
+    outcomeCount: groupStageScoreCard.outcomeCount + koOutcomeCount,
+    wrongCount: groupStageScoreCard.wrongCount + koWrongCount,
+    totalPredictions: groupStageScoreCard.totalPredictions + Object.keys(knockoutPredictions).length
+  };
 
   const activeGroupMatches = matches.filter(m => m.groupName === activeGroup);
   const activeGroupTeams = GROUPS[activeGroup] || [];
@@ -862,6 +1018,125 @@ export default function QuinielaPage() {
     team2: getWinnerOf('SF-2', 'Finalista 2'),
     placeholder1: 'Finalista 1',
     placeholder2: 'Finalista 2'
+  };
+
+  const renderKnockoutMatch = (match: KnockoutMatch) => {
+    const winner = knockoutPredictions[match.id] || '';
+    const scores = knockoutScores[match.id] || { home: '', away: '' };
+    const t1Exists = !match.team1.startsWith('Ganador') && !match.team1.startsWith('2do') && !match.team1.startsWith('3ro') && !match.team1.startsWith('Finalista');
+    const t2Exists = !match.team2.startsWith('Ganador') && !match.team2.startsWith('2do') && !match.team2.startsWith('3ro') && !match.team2.startsWith('Finalista');
+    const isFinal = match.roundName === 'F';
+    const ptsInfo = koMatchesPointsInfo[match.id];
+
+    return (
+      <div key={match.id} className={styles.koMatch} style={isFinal ? { border: '2px solid var(--accent)', margin: '0' } : undefined}>
+        {/* Points Badge */}
+        {ptsInfo && (
+          <div className={`${styles.koPointsBadge} ${
+            ptsInfo.pointsGained === 3 ? styles.exactPoints :
+            ptsInfo.pointsGained === 1 ? styles.outcomePoints : styles.zeroPoints
+          }`}>
+            +{ptsInfo.pointsGained} PTS
+          </div>
+        )}
+
+        {/* Hover Tooltip */}
+        {ptsInfo && (
+          <div className={styles.koTooltip}>
+            <div className={styles.koTooltipTitle}>Resultado Real</div>
+            <div className={styles.koTooltipScore}>{ptsInfo.actualScore}</div>
+            <div className={styles.koTooltipWinner}>Ganador Oficial: {ptsInfo.actualWinner}</div>
+            <div style={{ margin: '0.4rem 0', height: '1px', background: 'rgba(255,255,255,0.1)' }} />
+            <div className={styles.koTooltipPoints}>{ptsInfo.explanation}</div>
+            <div className={styles.koTooltipCumulative}>Acumulado: <strong>{ptsInfo.cumulativePoints} PTS</strong></div>
+          </div>
+        )}
+
+        {/* Team 1 (Home) */}
+        <div 
+          onClick={() => isEditingOwn && t1Exists && handleSelectKnockoutWinner(match.id, match.team1)}
+          className={`${styles.koTeam} ${winner === match.team1 ? styles.koTeamWinner : ''}`}
+          style={{ cursor: (isEditingOwn && t1Exists) ? 'pointer' : 'default' }}
+        >
+          <div className={styles.koTeamContent}>
+            <span className={styles.flag}>{(TEAMS[match.team1] || {}).flag}</span>
+            {t1Exists ? (
+              <span className={styles.koTeamName}>{match.team1}</span>
+            ) : (
+              <span className={styles.koTeamPlaceholder}>{match.placeholder1}</span>
+            )}
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+            {t1Exists && t2Exists && (
+              isEditingOwn ? (
+                <input
+                  type="number"
+                  min="0"
+                  max="20"
+                  value={scores.home}
+                  onChange={(e) => handleKnockoutScoreChange(match.id, true, e.target.value, match.team1, match.team2)}
+                  onClick={(e) => e.stopPropagation()}
+                  className={styles.koScoreInput}
+                  placeholder="-"
+                />
+              ) : (
+                scores.home !== '' && <span className={styles.koScoreDisplay}>{scores.home}</span>
+              )
+            )}
+            {t1Exists && winner === match.team1 && (
+              <span 
+                style={isFinal ? { color: 'var(--accent)' } : undefined} 
+                className={styles.koTeamWinnerCheck}
+              >
+                {isFinal ? '👑' : '✓'}
+              </span>
+            )}
+          </div>
+        </div>
+
+        {/* Team 2 (Away) */}
+        <div 
+          onClick={() => isEditingOwn && t2Exists && handleSelectKnockoutWinner(match.id, match.team2)}
+          className={`${styles.koTeam} ${winner === match.team2 ? styles.koTeamWinner : ''}`}
+          style={{ cursor: (isEditingOwn && t2Exists) ? 'pointer' : 'default' }}
+        >
+          <div className={styles.koTeamContent}>
+            <span className={styles.flag}>{(TEAMS[match.team2] || {}).flag}</span>
+            {t2Exists ? (
+              <span className={styles.koTeamName}>{match.team2}</span>
+            ) : (
+              <span className={styles.koTeamPlaceholder}>{match.placeholder2}</span>
+            )}
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+            {t1Exists && t2Exists && (
+              isEditingOwn ? (
+                <input
+                  type="number"
+                  min="0"
+                  max="20"
+                  value={scores.away}
+                  onChange={(e) => handleKnockoutScoreChange(match.id, false, e.target.value, match.team1, match.team2)}
+                  onClick={(e) => e.stopPropagation()}
+                  className={styles.koScoreInput}
+                  placeholder="-"
+                />
+              ) : (
+                scores.away !== '' && <span className={styles.koScoreDisplay}>{scores.away}</span>
+              )
+            )}
+            {t2Exists && winner === match.team2 && (
+              <span 
+                style={isFinal ? { color: 'var(--accent)' } : undefined} 
+                className={styles.koTeamWinnerCheck}
+              >
+                {isFinal ? '👑' : '✓'}
+              </span>
+            )}
+          </div>
+        </div>
+      </div>
+    );
   };
 
   const champion = getWinnerOf('F', '');
@@ -1511,315 +1786,25 @@ export default function QuinielaPage() {
                 {/* ROUND OF 32 - LEFT */}
                 <div className={styles.round}>
                   <div className={styles.roundName}>R32 (Izquierda)</div>
-                  {r32Matches.slice(0, 8).map(match => {
-                    const winner = knockoutPredictions[match.id] || '';
-                    const scores = knockoutScores[match.id] || { home: '', away: '' };
-                    return (
-                      <div key={match.id} className={styles.koMatch}>
-                        <div 
-                          onClick={() => isEditingOwn && handleSelectKnockoutWinner(match.id, match.team1)}
-                          className={`${styles.koTeam} ${winner === match.team1 ? styles.koTeamWinner : ''}`}
-                          style={{ cursor: isEditingOwn ? 'pointer' : 'default' }}
-                        >
-                          <div className={styles.koTeamContent}>
-                            <span className={styles.flag}>{(TEAMS[match.team1] || {}).flag}</span>
-                            <span className={styles.koTeamName}>{match.team1}</span>
-                          </div>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                            {isEditingOwn ? (
-                              <input
-                                type="number"
-                                min="0"
-                                max="20"
-                                value={scores.home}
-                                onChange={(e) => handleKnockoutScoreChange(match.id, true, e.target.value, match.team1, match.team2)}
-                                onClick={(e) => e.stopPropagation()}
-                                className={styles.koScoreInput}
-                                placeholder="-"
-                              />
-                            ) : (
-                              scores.home !== '' && <span className={styles.koScoreDisplay}>{scores.home}</span>
-                            )}
-                            {winner === match.team1 && <span className={styles.koTeamWinnerCheck}>✓</span>}
-                          </div>
-                        </div>
-
-                        <div 
-                          onClick={() => isEditingOwn && handleSelectKnockoutWinner(match.id, match.team2)}
-                          className={`${styles.koTeam} ${winner === match.team2 ? styles.koTeamWinner : ''}`}
-                          style={{ cursor: isEditingOwn ? 'pointer' : 'default' }}
-                        >
-                          <div className={styles.koTeamContent}>
-                            <span className={styles.flag}>{(TEAMS[match.team2] || {}).flag}</span>
-                            <span className={styles.koTeamName}>{match.team2}</span>
-                          </div>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                            {isEditingOwn ? (
-                              <input
-                                type="number"
-                                min="0"
-                                max="20"
-                                value={scores.away}
-                                onChange={(e) => handleKnockoutScoreChange(match.id, false, e.target.value, match.team1, match.team2)}
-                                onClick={(e) => e.stopPropagation()}
-                                className={styles.koScoreInput}
-                                placeholder="-"
-                              />
-                            ) : (
-                              scores.away !== '' && <span className={styles.koScoreDisplay}>{scores.away}</span>
-                            )}
-                            {winner === match.team2 && <span className={styles.koTeamWinnerCheck}>✓</span>}
-                          </div>
-                        </div>
-                      </div>
-                    );
-                  })}
+                  {r32Matches.slice(0, 8).map(renderKnockoutMatch)}
                 </div>
 
                 {/* ROUND OF 16 - LEFT */}
                 <div className={styles.round}>
                   <div className={styles.roundName}>Octavos (Izquierda)</div>
-                  {r16Matches.slice(0, 4).map(match => {
-                    const winner = knockoutPredictions[match.id] || '';
-                    const scores = knockoutScores[match.id] || { home: '', away: '' };
-                    const t1Exists = !match.team1.startsWith('Ganador');
-                    const t2Exists = !match.team2.startsWith('Ganador');
-                    return (
-                      <div key={match.id} className={styles.koMatch}>
-                        <div 
-                          onClick={() => isEditingOwn && t1Exists && handleSelectKnockoutWinner(match.id, match.team1)}
-                          className={`${styles.koTeam} ${winner === match.team1 ? styles.koTeamWinner : ''}`}
-                          style={{ cursor: (isEditingOwn && t1Exists) ? 'pointer' : 'default' }}
-                        >
-                          <div className={styles.koTeamContent}>
-                            <span className={styles.flag}>{(TEAMS[match.team1] || {}).flag}</span>
-                            {t1Exists ? (
-                              <span className={styles.koTeamName}>{match.team1}</span>
-                            ) : (
-                              <span className={styles.koTeamPlaceholder}>{match.placeholder1}</span>
-                            )}
-                          </div>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                            {t1Exists && t2Exists && (
-                              isEditingOwn ? (
-                                <input
-                                  type="number"
-                                  min="0"
-                                  max="20"
-                                  value={scores.home}
-                                  onChange={(e) => handleKnockoutScoreChange(match.id, true, e.target.value, match.team1, match.team2)}
-                                  onClick={(e) => e.stopPropagation()}
-                                  className={styles.koScoreInput}
-                                  placeholder="-"
-                                />
-                              ) : (
-                                scores.home !== '' && <span className={styles.koScoreDisplay}>{scores.home}</span>
-                              )
-                            )}
-                            {t1Exists && winner === match.team1 && <span className={styles.koTeamWinnerCheck}>✓</span>}
-                          </div>
-                        </div>
-
-                        <div 
-                          onClick={() => isEditingOwn && t2Exists && handleSelectKnockoutWinner(match.id, match.team2)}
-                          className={`${styles.koTeam} ${winner === match.team2 ? styles.koTeamWinner : ''}`}
-                          style={{ cursor: (isEditingOwn && t2Exists) ? 'pointer' : 'default' }}
-                        >
-                          <div className={styles.koTeamContent}>
-                            <span className={styles.flag}>{(TEAMS[match.team2] || {}).flag}</span>
-                            {t2Exists ? (
-                              <span className={styles.koTeamName}>{match.team2}</span>
-                            ) : (
-                              <span className={styles.koTeamPlaceholder}>{match.placeholder2}</span>
-                            )}
-                          </div>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                            {t1Exists && t2Exists && (
-                              isEditingOwn ? (
-                                <input
-                                  type="number"
-                                  min="0"
-                                  max="20"
-                                  value={scores.away}
-                                  onChange={(e) => handleKnockoutScoreChange(match.id, false, e.target.value, match.team1, match.team2)}
-                                  onClick={(e) => e.stopPropagation()}
-                                  className={styles.koScoreInput}
-                                  placeholder="-"
-                                />
-                              ) : (
-                                scores.away !== '' && <span className={styles.koScoreDisplay}>{scores.away}</span>
-                              )
-                            )}
-                            {t2Exists && winner === match.team2 && <span className={styles.koTeamWinnerCheck}>✓</span>}
-                          </div>
-                        </div>
-                      </div>
-                    );
-                  })}
+                  {r16Matches.slice(0, 4).map(renderKnockoutMatch)}
                 </div>
 
                 {/* QUARTER FINALS - LEFT */}
                 <div className={styles.round}>
                   <div className={styles.roundName}>Cuartos (Izquierda)</div>
-                  {qfMatches.slice(0, 2).map(match => {
-                    const winner = knockoutPredictions[match.id] || '';
-                    const scores = knockoutScores[match.id] || { home: '', away: '' };
-                    const t1Exists = !match.team1.startsWith('Ganador');
-                    const t2Exists = !match.team2.startsWith('Ganador');
-                    return (
-                      <div key={match.id} className={styles.koMatch}>
-                        <div 
-                          onClick={() => isEditingOwn && t1Exists && handleSelectKnockoutWinner(match.id, match.team1)}
-                          className={`${styles.koTeam} ${winner === match.team1 ? styles.koTeamWinner : ''}`}
-                          style={{ cursor: (isEditingOwn && t1Exists) ? 'pointer' : 'default' }}
-                        >
-                          <div className={styles.koTeamContent}>
-                            <span className={styles.flag}>{(TEAMS[match.team1] || {}).flag}</span>
-                            {t1Exists ? (
-                              <span className={styles.koTeamName}>{match.team1}</span>
-                            ) : (
-                              <span className={styles.koTeamPlaceholder}>{match.placeholder1}</span>
-                            )}
-                          </div>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                            {t1Exists && t2Exists && (
-                              isEditingOwn ? (
-                                <input
-                                  type="number"
-                                  min="0"
-                                  max="20"
-                                  value={scores.home}
-                                  onChange={(e) => handleKnockoutScoreChange(match.id, true, e.target.value, match.team1, match.team2)}
-                                  onClick={(e) => e.stopPropagation()}
-                                  className={styles.koScoreInput}
-                                  placeholder="-"
-                                />
-                              ) : (
-                                scores.home !== '' && <span className={styles.koScoreDisplay}>{scores.home}</span>
-                              )
-                            )}
-                            {t1Exists && winner === match.team1 && <span className={styles.koTeamWinnerCheck}>✓</span>}
-                          </div>
-                        </div>
-
-                        <div 
-                          onClick={() => isEditingOwn && t2Exists && handleSelectKnockoutWinner(match.id, match.team2)}
-                          className={`${styles.koTeam} ${winner === match.team2 ? styles.koTeamWinner : ''}`}
-                          style={{ cursor: (isEditingOwn && t2Exists) ? 'pointer' : 'default' }}
-                        >
-                          <div className={styles.koTeamContent}>
-                            <span className={styles.flag}>{(TEAMS[match.team2] || {}).flag}</span>
-                            {t2Exists ? (
-                              <span className={styles.koTeamName}>{match.team2}</span>
-                            ) : (
-                              <span className={styles.koTeamPlaceholder}>{match.placeholder2}</span>
-                            )}
-                          </div>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                            {t1Exists && t2Exists && (
-                              isEditingOwn ? (
-                                <input
-                                  type="number"
-                                  min="0"
-                                  max="20"
-                                  value={scores.away}
-                                  onChange={(e) => handleKnockoutScoreChange(match.id, false, e.target.value, match.team1, match.team2)}
-                                  onClick={(e) => e.stopPropagation()}
-                                  className={styles.koScoreInput}
-                                  placeholder="-"
-                                />
-                              ) : (
-                                scores.away !== '' && <span className={styles.koScoreDisplay}>{scores.away}</span>
-                              )
-                            )}
-                            {t2Exists && winner === match.team2 && <span className={styles.koTeamWinnerCheck}>✓</span>}
-                          </div>
-                        </div>
-                      </div>
-                    );
-                  })}
+                  {qfMatches.slice(0, 2).map(renderKnockoutMatch)}
                 </div>
 
                 {/* SEMI FINALS - LEFT */}
                 <div className={styles.round}>
                   <div className={styles.roundName}>Semifinal (Izquierda)</div>
-                  {sfMatches.slice(0, 1).map(match => {
-                    const winner = knockoutPredictions[match.id] || '';
-                    const scores = knockoutScores[match.id] || { home: '', away: '' };
-                    const t1Exists = !match.team1.startsWith('Ganador') && !match.team1.startsWith('Finalista');
-                    const t2Exists = !match.team2.startsWith('Ganador') && !match.team2.startsWith('Finalista');
-                    return (
-                      <div key={match.id} className={styles.koMatch}>
-                        <div 
-                          onClick={() => isEditingOwn && t1Exists && handleSelectKnockoutWinner(match.id, match.team1)}
-                          className={`${styles.koTeam} ${winner === match.team1 ? styles.koTeamWinner : ''}`}
-                          style={{ cursor: (isEditingOwn && t1Exists) ? 'pointer' : 'default' }}
-                        >
-                          <div className={styles.koTeamContent}>
-                            <span className={styles.flag}>{(TEAMS[match.team1] || {}).flag}</span>
-                            {t1Exists ? (
-                              <span className={styles.koTeamName}>{match.team1}</span>
-                            ) : (
-                              <span className={styles.koTeamPlaceholder}>{match.placeholder1}</span>
-                            )}
-                          </div>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                            {t1Exists && t2Exists && (
-                              isEditingOwn ? (
-                                <input
-                                  type="number"
-                                  min="0"
-                                  max="20"
-                                  value={scores.home}
-                                  onChange={(e) => handleKnockoutScoreChange(match.id, true, e.target.value, match.team1, match.team2)}
-                                  onClick={(e) => e.stopPropagation()}
-                                  className={styles.koScoreInput}
-                                  placeholder="-"
-                                />
-                              ) : (
-                                scores.home !== '' && <span className={styles.koScoreDisplay}>{scores.home}</span>
-                              )
-                            )}
-                            {t1Exists && winner === match.team1 && <span className={styles.koTeamWinnerCheck}>✓</span>}
-                          </div>
-                        </div>
-
-                        <div 
-                          onClick={() => isEditingOwn && t2Exists && handleSelectKnockoutWinner(match.id, match.team2)}
-                          className={`${styles.koTeam} ${winner === match.team2 ? styles.koTeamWinner : ''}`}
-                          style={{ cursor: (isEditingOwn && t2Exists) ? 'pointer' : 'default' }}
-                        >
-                          <div className={styles.koTeamContent}>
-                            <span className={styles.flag}>{(TEAMS[match.team2] || {}).flag}</span>
-                            {t2Exists ? (
-                              <span className={styles.koTeamName}>{match.team2}</span>
-                            ) : (
-                              <span className={styles.koTeamPlaceholder}>{match.placeholder2}</span>
-                            )}
-                          </div>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                            {t1Exists && t2Exists && (
-                              isEditingOwn ? (
-                                <input
-                                  type="number"
-                                  min="0"
-                                  max="20"
-                                  value={scores.away}
-                                  onChange={(e) => handleKnockoutScoreChange(match.id, false, e.target.value, match.team1, match.team2)}
-                                  onClick={(e) => e.stopPropagation()}
-                                  className={styles.koScoreInput}
-                                  placeholder="-"
-                                />
-                              ) : (
-                                scores.away !== '' && <span className={styles.koScoreDisplay}>{scores.away}</span>
-                              )
-                            )}
-                            {t2Exists && winner === match.team2 && <span className={styles.koTeamWinnerCheck}>✓</span>}
-                          </div>
-                        </div>
-                      </div>
-                    );
-                  })}
+                  {sfMatches.slice(0, 1).map(renderKnockoutMatch)}
                 </div>
               </div>
 
@@ -1827,84 +1812,7 @@ export default function QuinielaPage() {
               <div className={styles.centerColumn}>
                 <div className={styles.round} style={{ justifyContent: 'center', gap: '2rem' }}>
                   <div className={styles.roundName}>Gran Final (F)</div>
-                  {(() => {
-                    const match = finalMatch;
-                    const winner = knockoutPredictions[match.id] || '';
-                    const scores = knockoutScores[match.id] || { home: '', away: '' };
-                    const t1Exists = !match.team1.startsWith('Finalista') && !match.team1.startsWith('Ganador');
-                    const t2Exists = !match.team2.startsWith('Finalista') && !match.team2.startsWith('Ganador');
-                    return (
-                      <div className={styles.koMatch} style={{ border: '2px solid var(--accent)', margin: '0' }}>
-                        <div 
-                          onClick={() => isEditingOwn && t1Exists && handleSelectKnockoutWinner(match.id, match.team1)}
-                          className={`${styles.koTeam} ${winner === match.team1 ? styles.koTeamWinner : ''}`}
-                          style={{ cursor: (isEditingOwn && t1Exists) ? 'pointer' : 'default' }}
-                        >
-                          <div className={styles.koTeamContent}>
-                            <span className={styles.flag}>{(TEAMS[match.team1] || {}).flag}</span>
-                            {t1Exists ? (
-                              <span className={styles.koTeamName}>{match.team1}</span>
-                            ) : (
-                              <span className={styles.koTeamPlaceholder}>{match.placeholder1}</span>
-                            )}
-                          </div>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                            {t1Exists && t2Exists && (
-                              isEditingOwn ? (
-                                <input
-                                  type="number"
-                                  min="0"
-                                  max="20"
-                                  value={scores.home}
-                                  onChange={(e) => handleKnockoutScoreChange(match.id, true, e.target.value, match.team1, match.team2)}
-                                  onClick={(e) => e.stopPropagation()}
-                                  className={styles.koScoreInput}
-                                  placeholder="-"
-                                />
-                              ) : (
-                                scores.home !== '' && <span className={styles.koScoreDisplay}>{scores.home}</span>
-                              )
-                            )}
-                            {t1Exists && winner === match.team1 && <span style={{ color: 'var(--accent)' }} className={styles.koTeamWinnerCheck}>👑</span>}
-                          </div>
-                        </div>
-
-                        <div 
-                          onClick={() => isEditingOwn && t2Exists && handleSelectKnockoutWinner(match.id, match.team2)}
-                          className={`${styles.koTeam} ${winner === match.team2 ? styles.koTeamWinner : ''}`}
-                          style={{ cursor: (isEditingOwn && t2Exists) ? 'pointer' : 'default' }}
-                        >
-                          <div className={styles.koTeamContent}>
-                            <span className={styles.flag}>{(TEAMS[match.team2] || {}).flag}</span>
-                            {t2Exists ? (
-                              <span className={styles.koTeamName}>{match.team2}</span>
-                            ) : (
-                              <span className={styles.koTeamPlaceholder}>{match.placeholder2}</span>
-                            )}
-                          </div>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                            {t1Exists && t2Exists && (
-                              isEditingOwn ? (
-                                <input
-                                  type="number"
-                                  min="0"
-                                  max="20"
-                                  value={scores.away}
-                                  onChange={(e) => handleKnockoutScoreChange(match.id, false, e.target.value, match.team1, match.team2)}
-                                  onClick={(e) => e.stopPropagation()}
-                                  className={styles.koScoreInput}
-                                  placeholder="-"
-                                />
-                              ) : (
-                                scores.away !== '' && <span className={styles.koScoreDisplay}>{scores.away}</span>
-                              )
-                            )}
-                            {t2Exists && winner === match.team2 && <span style={{ color: 'var(--accent)' }} className={styles.koTeamWinnerCheck}>👑</span>}
-                          </div>
-                        </div>
-                      </div>
-                    );
-                  })()}
+                  {renderKnockoutMatch(finalMatch)}
                 </div>
               </div>
 
@@ -1913,315 +1821,25 @@ export default function QuinielaPage() {
                 {/* SEMI FINALS - RIGHT */}
                 <div className={styles.round}>
                   <div className={styles.roundName}>Semifinal (Derecha)</div>
-                  {sfMatches.slice(1, 2).map(match => {
-                    const winner = knockoutPredictions[match.id] || '';
-                    const scores = knockoutScores[match.id] || { home: '', away: '' };
-                    const t1Exists = !match.team1.startsWith('Ganador') && !match.team1.startsWith('Finalista');
-                    const t2Exists = !match.team2.startsWith('Ganador') && !match.team2.startsWith('Finalista');
-                    return (
-                      <div key={match.id} className={styles.koMatch}>
-                        <div 
-                          onClick={() => isEditingOwn && t1Exists && handleSelectKnockoutWinner(match.id, match.team1)}
-                          className={`${styles.koTeam} ${winner === match.team1 ? styles.koTeamWinner : ''}`}
-                          style={{ cursor: (isEditingOwn && t1Exists) ? 'pointer' : 'default' }}
-                        >
-                          <div className={styles.koTeamContent}>
-                            <span className={styles.flag}>{(TEAMS[match.team1] || {}).flag}</span>
-                            {t1Exists ? (
-                              <span className={styles.koTeamName}>{match.team1}</span>
-                            ) : (
-                              <span className={styles.koTeamPlaceholder}>{match.placeholder1}</span>
-                            )}
-                          </div>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                            {t1Exists && t2Exists && (
-                              isEditingOwn ? (
-                                <input
-                                  type="number"
-                                  min="0"
-                                  max="20"
-                                  value={scores.home}
-                                  onChange={(e) => handleKnockoutScoreChange(match.id, true, e.target.value, match.team1, match.team2)}
-                                  onClick={(e) => e.stopPropagation()}
-                                  className={styles.koScoreInput}
-                                  placeholder="-"
-                                />
-                              ) : (
-                                scores.home !== '' && <span className={styles.koScoreDisplay}>{scores.home}</span>
-                              )
-                            )}
-                            {t1Exists && winner === match.team1 && <span className={styles.koTeamWinnerCheck}>✓</span>}
-                          </div>
-                        </div>
-
-                        <div 
-                          onClick={() => isEditingOwn && t2Exists && handleSelectKnockoutWinner(match.id, match.team2)}
-                          className={`${styles.koTeam} ${winner === match.team2 ? styles.koTeamWinner : ''}`}
-                          style={{ cursor: (isEditingOwn && t2Exists) ? 'pointer' : 'default' }}
-                        >
-                          <div className={styles.koTeamContent}>
-                            <span className={styles.flag}>{(TEAMS[match.team2] || {}).flag}</span>
-                            {t2Exists ? (
-                              <span className={styles.koTeamName}>{match.team2}</span>
-                            ) : (
-                              <span className={styles.koTeamPlaceholder}>{match.placeholder2}</span>
-                            )}
-                          </div>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                            {t1Exists && t2Exists && (
-                              isEditingOwn ? (
-                                <input
-                                  type="number"
-                                  min="0"
-                                  max="20"
-                                  value={scores.away}
-                                  onChange={(e) => handleKnockoutScoreChange(match.id, false, e.target.value, match.team1, match.team2)}
-                                  onClick={(e) => e.stopPropagation()}
-                                  className={styles.koScoreInput}
-                                  placeholder="-"
-                                />
-                              ) : (
-                                scores.away !== '' && <span className={styles.koScoreDisplay}>{scores.away}</span>
-                              )
-                            )}
-                            {t2Exists && winner === match.team2 && <span className={styles.koTeamWinnerCheck}>✓</span>}
-                          </div>
-                        </div>
-                      </div>
-                    );
-                  })}
+                  {sfMatches.slice(1, 2).map(renderKnockoutMatch)}
                 </div>
 
                 {/* QUARTER FINALS - RIGHT */}
                 <div className={styles.round}>
                   <div className={styles.roundName}>Cuartos (Derecha)</div>
-                  {qfMatches.slice(2, 4).map(match => {
-                    const winner = knockoutPredictions[match.id] || '';
-                    const scores = knockoutScores[match.id] || { home: '', away: '' };
-                    const t1Exists = !match.team1.startsWith('Ganador');
-                    const t2Exists = !match.team2.startsWith('Ganador');
-                    return (
-                      <div key={match.id} className={styles.koMatch}>
-                        <div 
-                          onClick={() => isEditingOwn && t1Exists && handleSelectKnockoutWinner(match.id, match.team1)}
-                          className={`${styles.koTeam} ${winner === match.team1 ? styles.koTeamWinner : ''}`}
-                          style={{ cursor: (isEditingOwn && t1Exists) ? 'pointer' : 'default' }}
-                        >
-                          <div className={styles.koTeamContent}>
-                            <span className={styles.flag}>{(TEAMS[match.team1] || {}).flag}</span>
-                            {t1Exists ? (
-                              <span className={styles.koTeamName}>{match.team1}</span>
-                            ) : (
-                              <span className={styles.koTeamPlaceholder}>{match.placeholder1}</span>
-                            )}
-                          </div>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                            {t1Exists && t2Exists && (
-                              isEditingOwn ? (
-                                <input
-                                  type="number"
-                                  min="0"
-                                  max="20"
-                                  value={scores.home}
-                                  onChange={(e) => handleKnockoutScoreChange(match.id, true, e.target.value, match.team1, match.team2)}
-                                  onClick={(e) => e.stopPropagation()}
-                                  className={styles.koScoreInput}
-                                  placeholder="-"
-                                />
-                              ) : (
-                                scores.home !== '' && <span className={styles.koScoreDisplay}>{scores.home}</span>
-                              )
-                            )}
-                            {t1Exists && winner === match.team1 && <span className={styles.koTeamWinnerCheck}>✓</span>}
-                          </div>
-                        </div>
-
-                        <div 
-                          onClick={() => isEditingOwn && t2Exists && handleSelectKnockoutWinner(match.id, match.team2)}
-                          className={`${styles.koTeam} ${winner === match.team2 ? styles.koTeamWinner : ''}`}
-                          style={{ cursor: (isEditingOwn && t2Exists) ? 'pointer' : 'default' }}
-                        >
-                          <div className={styles.koTeamContent}>
-                            <span className={styles.flag}>{(TEAMS[match.team2] || {}).flag}</span>
-                            {t2Exists ? (
-                              <span className={styles.koTeamName}>{match.team2}</span>
-                            ) : (
-                              <span className={styles.koTeamPlaceholder}>{match.placeholder2}</span>
-                            )}
-                          </div>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                            {t1Exists && t2Exists && (
-                              isEditingOwn ? (
-                                <input
-                                  type="number"
-                                  min="0"
-                                  max="20"
-                                  value={scores.away}
-                                  onChange={(e) => handleKnockoutScoreChange(match.id, false, e.target.value, match.team1, match.team2)}
-                                  onClick={(e) => e.stopPropagation()}
-                                  className={styles.koScoreInput}
-                                  placeholder="-"
-                                />
-                              ) : (
-                                scores.away !== '' && <span className={styles.koScoreDisplay}>{scores.away}</span>
-                              )
-                            )}
-                            {t2Exists && winner === match.team2 && <span className={styles.koTeamWinnerCheck}>✓</span>}
-                          </div>
-                        </div>
-                      </div>
-                    );
-                  })}
+                  {qfMatches.slice(2, 4).map(renderKnockoutMatch)}
                 </div>
 
                 {/* ROUND OF 16 - RIGHT */}
                 <div className={styles.round}>
                   <div className={styles.roundName}>Octavos (Derecha)</div>
-                  {r16Matches.slice(4, 8).map(match => {
-                    const winner = knockoutPredictions[match.id] || '';
-                    const scores = knockoutScores[match.id] || { home: '', away: '' };
-                    const t1Exists = !match.team1.startsWith('Ganador');
-                    const t2Exists = !match.team2.startsWith('Ganador');
-                    return (
-                      <div key={match.id} className={styles.koMatch}>
-                        <div 
-                          onClick={() => isEditingOwn && t1Exists && handleSelectKnockoutWinner(match.id, match.team1)}
-                          className={`${styles.koTeam} ${winner === match.team1 ? styles.koTeamWinner : ''}`}
-                          style={{ cursor: (isEditingOwn && t1Exists) ? 'pointer' : 'default' }}
-                        >
-                          <div className={styles.koTeamContent}>
-                            <span className={styles.flag}>{(TEAMS[match.team1] || {}).flag}</span>
-                            {t1Exists ? (
-                              <span className={styles.koTeamName}>{match.team1}</span>
-                            ) : (
-                              <span className={styles.koTeamPlaceholder}>{match.placeholder1}</span>
-                            )}
-                          </div>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                            {t1Exists && t2Exists && (
-                              isEditingOwn ? (
-                                <input
-                                  type="number"
-                                  min="0"
-                                  max="20"
-                                  value={scores.home}
-                                  onChange={(e) => handleKnockoutScoreChange(match.id, true, e.target.value, match.team1, match.team2)}
-                                  onClick={(e) => e.stopPropagation()}
-                                  className={styles.koScoreInput}
-                                  placeholder="-"
-                                />
-                              ) : (
-                                scores.home !== '' && <span className={styles.koScoreDisplay}>{scores.home}</span>
-                              )
-                            )}
-                            {t1Exists && winner === match.team1 && <span className={styles.koTeamWinnerCheck}>✓</span>}
-                          </div>
-                        </div>
-
-                        <div 
-                          onClick={() => isEditingOwn && t2Exists && handleSelectKnockoutWinner(match.id, match.team2)}
-                          className={`${styles.koTeam} ${winner === match.team2 ? styles.koTeamWinner : ''}`}
-                          style={{ cursor: (isEditingOwn && t2Exists) ? 'pointer' : 'default' }}
-                        >
-                          <div className={styles.koTeamContent}>
-                            <span className={styles.flag}>{(TEAMS[match.team2] || {}).flag}</span>
-                            {t2Exists ? (
-                              <span className={styles.koTeamName}>{match.team2}</span>
-                            ) : (
-                              <span className={styles.koTeamPlaceholder}>{match.placeholder2}</span>
-                            )}
-                          </div>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                            {t1Exists && t2Exists && (
-                              isEditingOwn ? (
-                                <input
-                                  type="number"
-                                  min="0"
-                                  max="20"
-                                  value={scores.away}
-                                  onChange={(e) => handleKnockoutScoreChange(match.id, false, e.target.value, match.team1, match.team2)}
-                                  onClick={(e) => e.stopPropagation()}
-                                  className={styles.koScoreInput}
-                                  placeholder="-"
-                                />
-                              ) : (
-                                scores.away !== '' && <span className={styles.koScoreDisplay}>{scores.away}</span>
-                              )
-                            )}
-                            {t2Exists && winner === match.team2 && <span className={styles.koTeamWinnerCheck}>✓</span>}
-                          </div>
-                        </div>
-                      </div>
-                    );
-                  })}
+                  {r16Matches.slice(4, 8).map(renderKnockoutMatch)}
                 </div>
 
                 {/* ROUND OF 32 - RIGHT */}
                 <div className={styles.round}>
                   <div className={styles.roundName}>R32 (Derecha)</div>
-                  {r32Matches.slice(8, 16).map(match => {
-                    const winner = knockoutPredictions[match.id] || '';
-                    const scores = knockoutScores[match.id] || { home: '', away: '' };
-                    return (
-                      <div key={match.id} className={styles.koMatch}>
-                        <div 
-                          onClick={() => isEditingOwn && handleSelectKnockoutWinner(match.id, match.team1)}
-                          className={`${styles.koTeam} ${winner === match.team1 ? styles.koTeamWinner : ''}`}
-                          style={{ cursor: isEditingOwn ? 'pointer' : 'default' }}
-                        >
-                          <div className={styles.koTeamContent}>
-                            <span className={styles.flag}>{(TEAMS[match.team1] || {}).flag}</span>
-                            <span className={styles.koTeamName}>{match.team1}</span>
-                          </div>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                            {isEditingOwn ? (
-                              <input
-                                type="number"
-                                min="0"
-                                max="20"
-                                value={scores.home}
-                                onChange={(e) => handleKnockoutScoreChange(match.id, true, e.target.value, match.team1, match.team2)}
-                                onClick={(e) => e.stopPropagation()}
-                                className={styles.koScoreInput}
-                                placeholder="-"
-                              />
-                            ) : (
-                              scores.home !== '' && <span className={styles.koScoreDisplay}>{scores.home}</span>
-                            )}
-                            {winner === match.team1 && <span className={styles.koTeamWinnerCheck}>✓</span>}
-                          </div>
-                        </div>
-
-                        <div 
-                          onClick={() => isEditingOwn && handleSelectKnockoutWinner(match.id, match.team2)}
-                          className={`${styles.koTeam} ${winner === match.team2 ? styles.koTeamWinner : ''}`}
-                          style={{ cursor: isEditingOwn ? 'pointer' : 'default' }}
-                        >
-                          <div className={styles.koTeamContent}>
-                            <span className={styles.flag}>{(TEAMS[match.team2] || {}).flag}</span>
-                            <span className={styles.koTeamName}>{match.team2}</span>
-                          </div>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                            {isEditingOwn ? (
-                              <input
-                                type="number"
-                                min="0"
-                                max="20"
-                                value={scores.away}
-                                onChange={(e) => handleKnockoutScoreChange(match.id, false, e.target.value, match.team1, match.team2)}
-                                onClick={(e) => e.stopPropagation()}
-                                className={styles.koScoreInput}
-                                placeholder="-"
-                              />
-                            ) : (
-                              scores.away !== '' && <span className={styles.koScoreDisplay}>{scores.away}</span>
-                            )}
-                            {winner === match.team2 && <span className={styles.koTeamWinnerCheck}>✓</span>}
-                          </div>
-                        </div>
-                      </div>
-                    );
-                  })}
+                  {r32Matches.slice(8, 16).map(renderKnockoutMatch)}
                 </div>
               </div>
 
@@ -2345,22 +1963,76 @@ export default function QuinielaPage() {
             </div>
           </div>
 
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-            {matches.map(match => {
-              const homeTeamData = TEAMS[match.homeTeam] || { flag: '' };
-              const awayTeamData = TEAMS[match.awayTeam] || { flag: '' };
-
-              return (
-                <AdminMatchRow 
-                  key={match.id}
-                  match={match}
-                  homeTeamData={homeTeamData}
-                  awayTeamData={awayTeamData}
-                  onUpdateScore={handleAdminScoreChange}
-                />
-              );
-            })}
+          {/* Admin sub-tab toggler */}
+          <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '1.5rem', background: 'rgba(0,0,0,0.2)', padding: '0.4rem', borderRadius: '10px', width: 'fit-content', border: '1px solid var(--border-color)' }}>
+            <button 
+              onClick={() => setAdminSubTab('groups')}
+              style={{
+                background: adminSubTab === 'groups' ? 'var(--primary)' : 'transparent',
+                color: '#ffffff',
+                border: 'none',
+                padding: '0.5rem 1rem',
+                borderRadius: '6px',
+                fontWeight: 600,
+                cursor: 'pointer',
+                transition: 'all 0.2s'
+              }}
+            >
+              Fase de Grupos
+            </button>
+            <button 
+              onClick={() => setAdminSubTab('knockout')}
+              style={{
+                background: adminSubTab === 'knockout' ? 'var(--primary)' : 'transparent',
+                color: '#ffffff',
+                border: 'none',
+                padding: '0.5rem 1rem',
+                borderRadius: '6px',
+                fontWeight: 600,
+                cursor: 'pointer',
+                transition: 'all 0.2s'
+              }}
+            >
+              Fase de Eliminatorias
+            </button>
           </div>
+
+          {adminSubTab === 'groups' ? (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+              {matches.map(match => {
+                const homeTeamData = TEAMS[match.homeTeam] || { flag: '' };
+                const awayTeamData = TEAMS[match.awayTeam] || { flag: '' };
+
+                return (
+                  <AdminMatchRow 
+                    key={match.id}
+                    match={match}
+                    homeTeamData={homeTeamData}
+                    awayTeamData={awayTeamData}
+                    onUpdateScore={handleAdminScoreChange}
+                  />
+                );
+              })}
+            </div>
+          ) : (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+              {koMatchIdsOrder.map(matchId => {
+                const match = actualKoMatches[matchId];
+                if (!match) return null;
+                const savedResult = knockoutResults[matchId];
+
+                return (
+                  <AdminKnockoutRow 
+                    key={matchId}
+                    matchId={matchId}
+                    match={match}
+                    savedResult={savedResult}
+                    onUpdateResult={handleAdminKnockoutScoreUpdate}
+                  />
+                );
+              })}
+            </div>
+          )}
         </div>
       )}
 
@@ -2573,6 +2245,202 @@ function AdminMatchRow({ match, homeTeamData, awayTeamData, onUpdateScore }: Adm
             fontSize: '0.85rem',
             fontWeight: 600,
             cursor: 'pointer'
+          }}
+        >
+          {saving ? '...' : 'Actualizar'}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// Inner helper component for admin knockout matches list
+interface AdminKnockoutRowProps {
+  matchId: string;
+  match: KnockoutMatch;
+  savedResult?: { winnerTeam: string; homeScore: number | ''; awayScore: number | '' };
+  onUpdateResult: (matchId: string, homeVal: string, awayVal: string, winnerTeam: string) => Promise<void>;
+}
+
+function AdminKnockoutRow({ matchId, match, savedResult, onUpdateResult }: AdminKnockoutRowProps) {
+  const [homeInput, setHomeInput] = useState<string>(savedResult && savedResult.homeScore !== null && savedResult.homeScore !== undefined ? savedResult.homeScore.toString() : '');
+  const [awayInput, setAwayInput] = useState<string>(savedResult && savedResult.awayScore !== null && savedResult.awayScore !== undefined ? savedResult.awayScore.toString() : '');
+  const [winnerTeam, setWinnerTeam] = useState<string>(savedResult ? savedResult.winnerTeam : '');
+  const [saving, setSaving] = useState<boolean>(false);
+
+  // Sync inputs if savedResult changes
+  useEffect(() => {
+    if (savedResult) {
+      setHomeInput(savedResult.homeScore !== null && savedResult.homeScore !== undefined ? savedResult.homeScore.toString() : '');
+      setAwayInput(savedResult.awayScore !== null && savedResult.awayScore !== undefined ? savedResult.awayScore.toString() : '');
+      setWinnerTeam(savedResult.winnerTeam || '');
+    } else {
+      setHomeInput('');
+      setAwayInput('');
+      setWinnerTeam('');
+    }
+  }, [savedResult]);
+
+  // Auto set winner if score changes
+  const handleScoreChange = (isHome: boolean, val: string) => {
+    const parsedVal = val === '' ? '' : parseInt(val, 10);
+    if (parsedVal !== '' && isNaN(parsedVal)) return;
+
+    const newHome = isHome ? val : homeInput;
+    const newAway = isHome ? homeInput : val;
+
+    if (isHome) setHomeInput(val);
+    else setAwayInput(val);
+
+    if (newHome !== '' && newAway !== '') {
+      const hInt = parseInt(newHome, 10);
+      const aInt = parseInt(newAway, 10);
+      if (hInt > aInt) {
+        setWinnerTeam(match.team1);
+      } else if (aInt > hInt) {
+        setWinnerTeam(match.team2);
+      }
+    } else {
+      setWinnerTeam('');
+    }
+  };
+
+  const handleSave = async () => {
+    setSaving(true);
+    await onUpdateResult(matchId, homeInput, awayInput, winnerTeam);
+    setSaving(false);
+  };
+
+  const t1Exists = !match.team1.startsWith('Ganador') && !match.team1.startsWith('2do') && !match.team1.startsWith('3ro') && !match.team1.startsWith('Finalista');
+  const t2Exists = !match.team2.startsWith('Ganador') && !match.team2.startsWith('2do') && !match.team2.startsWith('3ro') && !match.team2.startsWith('Finalista');
+
+  const roundNamesMap: Record<string, string> = {
+    'R32': 'Dieciseisavos de Final',
+    'R16': 'Octavos de Final',
+    'QF': 'Cuartos de Final',
+    'SF': 'Semifinal',
+    'F': 'Gran Final'
+  };
+
+  return (
+    <div style={{
+      background: 'var(--bg-surface)',
+      border: '1px solid var(--border-color)',
+      borderRadius: '12px',
+      padding: '1rem',
+      display: 'flex',
+      flexDirection: 'column',
+      gap: '1rem',
+      alignItems: 'stretch'
+    }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <span style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', fontWeight: 600 }}>
+          {roundNamesMap[match.roundName] || match.roundName} - Partido {matchId}
+        </span>
+        {winnerTeam && (
+          <span style={{ fontSize: '0.85rem', color: 'var(--primary)', fontWeight: 700 }}>
+            👑 Avanza: {winnerTeam}
+          </span>
+        )}
+      </div>
+
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '1rem', flexWrap: 'wrap' }}>
+        <div 
+          onClick={() => t1Exists && t2Exists && setWinnerTeam(match.team1)}
+          style={{ 
+            display: 'flex', 
+            alignItems: 'center', 
+            gap: '0.5rem', 
+            flexGrow: 1, 
+            minWidth: '150px',
+            cursor: (t1Exists && t2Exists) ? 'pointer' : 'default',
+            padding: '0.4rem',
+            borderRadius: '6px',
+            background: winnerTeam === match.team1 ? 'rgba(16, 185, 129, 0.1)' : 'transparent',
+            border: winnerTeam === match.team1 ? '1px solid var(--primary)' : '1px solid transparent'
+          }}
+        >
+          <span style={{ fontSize: '1.2rem' }}>{(TEAMS[match.team1] || {}).flag}</span>
+          <span style={{ fontSize: '0.95rem', fontWeight: 600, color: t1Exists ? '#ffffff' : 'var(--text-muted)' }}>
+            {match.team1}
+          </span>
+        </div>
+
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+          <input
+            type="number"
+            min="0"
+            value={homeInput}
+            onChange={(e) => handleScoreChange(true, e.target.value)}
+            disabled={!t1Exists || !t2Exists}
+            style={{
+              width: '45px',
+              height: '35px',
+              background: 'rgba(0,0,0,0.4)',
+              border: '1px solid var(--border-color)',
+              color: '#ffffff',
+              textAlign: 'center',
+              borderRadius: '6px',
+              fontSize: '1rem',
+              fontWeight: 700
+            }}
+          />
+          <span style={{ color: 'var(--text-secondary)' }}>-</span>
+          <input
+            type="number"
+            min="0"
+            value={awayInput}
+            onChange={(e) => handleScoreChange(false, e.target.value)}
+            disabled={!t1Exists || !t2Exists}
+            style={{
+              width: '45px',
+              height: '35px',
+              background: 'rgba(0,0,0,0.4)',
+              border: '1px solid var(--border-color)',
+              color: '#ffffff',
+              textAlign: 'center',
+              borderRadius: '6px',
+              fontSize: '1rem',
+              fontWeight: 700
+            }}
+          />
+        </div>
+
+        <div 
+          onClick={() => t1Exists && t2Exists && setWinnerTeam(match.team2)}
+          style={{ 
+            display: 'flex', 
+            alignItems: 'center', 
+            gap: '0.5rem', 
+            flexGrow: 1, 
+            justifyContent: 'flex-end',
+            minWidth: '150px',
+            cursor: (t1Exists && t2Exists) ? 'pointer' : 'default',
+            padding: '0.4rem',
+            borderRadius: '6px',
+            background: winnerTeam === match.team2 ? 'rgba(16, 185, 129, 0.1)' : 'transparent',
+            border: winnerTeam === match.team2 ? '1px solid var(--primary)' : '1px solid transparent'
+          }}
+        >
+          <span style={{ fontSize: '0.95rem', fontWeight: 600, color: t2Exists ? '#ffffff' : 'var(--text-muted)', textAlign: 'right' }}>
+            {match.team2}
+          </span>
+          <span style={{ fontSize: '1.2rem' }}>{(TEAMS[match.team2] || {}).flag}</span>
+        </div>
+
+        <button 
+          onClick={handleSave}
+          disabled={saving || !t1Exists || !t2Exists || !winnerTeam}
+          style={{
+            background: 'var(--primary)',
+            color: '#ffffff',
+            border: 'none',
+            borderRadius: '6px',
+            padding: '0.4rem 0.8rem',
+            fontSize: '0.85rem',
+            fontWeight: 600,
+            cursor: 'pointer',
+            opacity: (!t1Exists || !t2Exists || !winnerTeam) ? 0.5 : 1
           }}
         >
           {saving ? '...' : 'Actualizar'}

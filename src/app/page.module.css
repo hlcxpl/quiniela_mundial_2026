@@ -611,9 +611,19 @@
   background: var(--border-color);
   border: 1px solid var(--border-color);
   border-radius: 8px;
-  overflow: hidden;
   box-shadow: 0 4px 10px rgba(0, 0, 0, 0.15);
   margin: 0.5rem 0;
+  position: relative;
+}
+
+.koMatch > div:first-of-type {
+  border-top-left-radius: 8px;
+  border-top-right-radius: 8px;
+}
+
+.koMatch > div:last-of-type {
+  border-bottom-left-radius: 8px;
+  border-bottom-right-radius: 8px;
 }
 
 .koTeam {
@@ -972,5 +982,78 @@
 .tutorialBtnPrimary:hover {
   background: var(--primary-hover);
   box-shadow: 0 0 16px rgba(16, 185, 129, 0.45);
+}
+
+/* Knockout Points Badge & Tooltip styles */
+.koPointsBadge {
+  position: absolute;
+  right: -8px;
+  top: -8px;
+  font-size: 0.65rem;
+  font-weight: 800;
+  padding: 0.15rem 0.35rem;
+  border-radius: 6px;
+  z-index: 10;
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.4);
+  pointer-events: none;
+}
+
+.koTooltip {
+  display: none;
+  position: absolute;
+  background: rgba(10, 20, 38, 0.95);
+  backdrop-filter: blur(12px);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 12px;
+  padding: 0.8rem 1rem;
+  width: 210px;
+  box-shadow: 0 10px 25px rgba(0, 0, 0, 0.6);
+  z-index: 100;
+  color: #ffffff;
+  pointer-events: none;
+  font-family: var(--font-sans);
+  
+  /* Position it on top of the card by default */
+  bottom: 110%;
+  left: 50%;
+  transform: translateX(-50%);
+}
+
+.koMatch:hover .koTooltip {
+  display: block;
+}
+
+.koTooltipTitle {
+  font-size: 0.7rem;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  margin-bottom: 0.2rem;
+}
+
+.koTooltipScore {
+  font-size: 0.9rem;
+  font-weight: 850;
+  color: var(--accent);
+  margin-bottom: 0.2rem;
+}
+
+.koTooltipWinner {
+  font-size: 0.75rem;
+  color: var(--text-secondary);
+  margin-bottom: 0.2rem;
+}
+
+.koTooltipPoints {
+  font-size: 0.8rem;
+  font-weight: 700;
+  color: var(--primary);
+  margin-bottom: 0.2rem;
+}
+
+.koTooltipCumulative {
+  font-size: 0.8rem;
+  color: #ffffff;
 }
 

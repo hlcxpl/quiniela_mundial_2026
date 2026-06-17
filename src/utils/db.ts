@@ -102,6 +102,16 @@ export async function initDb() {
     )
   `);
 
+  // 5. Create knockout results table for official results
+  await query(`
+    CREATE TABLE IF NOT EXISTS knockout_results (
+      match_id VARCHAR(50) PRIMARY KEY,
+      winner_team VARCHAR(255),
+      home_score INT,
+      away_score INT
+    )
+  `);
+
   // Migration: Add home_score, away_score and drop NOT NULL from winner_team
   await query(`
     DO $$

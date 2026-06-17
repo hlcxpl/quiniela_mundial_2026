@@ -1,4 +1,5 @@
 import { Match, Prediction, GroupStandingRow, ParticipantScore, KnockoutMatch } from '../types';
+import { GROUPS } from '../data/initialData';
 
 // Calculate standings for a group
 export function calculateGroupStandings(
@@ -251,4 +252,108 @@ export function getRoundOf32Matchups(
     { id: 'R32-15', roundName: 'R32', team1: runnerUp('E'), team2: runnerUp('F'), placeholder1: '2E', placeholder2: '2F' },
     { id: 'R32-16', roundName: 'R32', team1: runnerUp('G'), team2: runnerUp('H'), placeholder1: '2G', placeholder2: '2H' }
   ];
+}
+
+// Generate all matches in the knockout bracket based on group stage predictions and subsequent winners
+export function getCompleteKnockoutMatches(
+  matches: Match[],
+  predictions: Prediction[],
+  knockoutPredictions: Record<string, string>
+): Record<string, KnockoutMatch> {
+  const r32List = getRoundOf32Matchups(GROUPS, matches, predictions);
+  const matchesMap: Record<string, KnockoutMatch> = {};
+  r32List.forEach(m => {
+    matchesMap[m.id] = m;
+  });
+
+  const getWinnerOf = (matchId: string, defaultName: string): string => {
+    return knockoutPredictions[matchId] || defaultName;
+  };
+
+  // R16
+  const r16: KnockoutMatch[] = [
+    { id: 'R16-1', roundName: 'R16', team1: getWinnerOf('R32-1', 'Ganador R32 M1'), team2: getWinnerOf('R32-2', 'Ganador R32 M2'), placeholder1: 'Ganador M1', placeholder2: 'Ganador M2' },
+    { id: 'R16-2', roundName: 'R16', team1: getWinnerOf('R32-3', 'Ganador R32 M3'), team2: getWinnerOf('R32-4', 'Ganador R32 M4'), placeholder1: 'Ganador M3', placeholder2: 'Ganador M4' },
+    { id: 'R16-3', roundName: 'R16', team1: getWinnerOf('R32-5', 'Ganador R32 M5'), team2: getWinnerOf('R32-6', 'Ganador R32 M6'), placeholder1: 'Ganador M5', placeholder2: 'Ganador M6' },
+    { id: 'R16-4', roundName: 'R16', team1: getWinnerOf('R32-7', 'Ganador R32 M7'), team2: getWinnerOf('R32-8', 'Ganador R32 M8'), placeholder1: 'Ganador M7', placeholder2: 'Ganador M8' },
+    { id: 'R16-5', roundName: 'R16', team1: getWinnerOf('R32-9', 'Ganador R32 M9'), team2: getWinnerOf('R32-10', 'Ganador R32 M10'), placeholder1: 'Ganador M9', placeholder2: 'Ganador M10' },
+    { id: 'R16-6', roundName: 'R16', team1: getWinnerOf('R32-11', 'Ganador R32 M11'), team2: getWinnerOf('R32-12', 'Ganador R32 M12'), placeholder1: 'Ganador M11', placeholder2: 'Ganador M12' },
+    { id: 'R16-7', roundName: 'R16', team1: getWinnerOf('R32-13', 'Ganador R32 M13'), team2: getWinnerOf('R32-14', 'Ganador R32 M14'), placeholder1: 'Ganador M13', placeholder2: 'Ganador M14' },
+    { id: 'R16-8', roundName: 'R16', team1: getWinnerOf('R32-15', 'Ganador R32 M15'), team2: getWinnerOf('R32-16', 'Ganador R32 M16'), placeholder1: 'Ganador M15', placeholder2: 'Ganador M16' }
+  ];
+  r16.forEach(m => { matchesMap[m.id] = m; });
+
+  // QF
+  const qf: KnockoutMatch[] = [
+    { id: 'QF-1', roundName: 'QF', team1: getWinnerOf('R16-1', 'Ganador R16 M1'), team2: getWinnerOf('R16-2', 'Ganador R16 M2'), placeholder1: 'Ganador M1', placeholder2: 'Ganador M2' },
+    { id: 'QF-2', roundName: 'QF', team1: getWinnerOf('R16-3', 'Ganador R16 M3'), team2: getWinnerOf('R16-4', 'Ganador R16 M4'), placeholder1: 'Ganador M3', placeholder2: 'Ganador M4' },
+    { id: 'QF-3', roundName: 'QF', team1: getWinnerOf('R16-5', 'Ganador R16 M5'), team2: getWinnerOf('R16-6', 'Ganador R16 M6'), placeholder1: 'Ganador M5', placeholder2: 'Ganador M6' },
+    { id: 'QF-4', roundName: 'QF', team1: getWinnerOf('R16-7', 'Ganador R16 M7'), team2: getWinnerOf('R16-8', 'Ganador R16 M8'), placeholder1: 'Ganador M7', placeholder2: 'Ganador M8' }
+  ];
+  qf.forEach(m => { matchesMap[m.id] = m; });
+
+  // SF
+  const sf: KnockoutMatch[] = [
+    { id: 'SF-1', roundName: 'SF', team1: getWinnerOf('QF-1', 'Ganador QF M1'), team2: getWinnerOf('QF-2', 'Ganador QF M2'), placeholder1: 'Ganador Q1', placeholder2: 'Ganador Q2' },
+    { id: 'SF-2', roundName: 'SF', team1: getWinnerOf('QF-3', 'Ganador QF M3'), team2: getWinnerOf('QF-4', 'Ganador QF M4'), placeholder1: 'Ganador Q3', placeholder2: 'Ganador Q4' }
+  ];
+  sf.forEach(m => { matchesMap[m.id] = m; });
+
+  // F
+  const f: KnockoutMatch = {
+    id: 'F',
+    roundName: 'F',
+    team1: getWinnerOf('SF-1', 'Finalista 1'),
+    team2: getWinnerOf('SF-2', 'Finalista 2'),
+    placeholder1: 'Finalista 1',
+    placeholder2: 'Finalista 2'
+  };
+  matchesMap['F'] = f;
+
+  return matchesMap;
+}
+
+// Calculate the points for a knockout match prediction against official result
+export function calculateKnockoutMatchPoints(
+  predTeam1: string,
+  predTeam2: string,
+  predHome: number | '',
+  predAway: number | '',
+  predWinner: string,
+  actualTeam1: string,
+  actualTeam2: string,
+  actualHome: number | '',
+  actualAway: number | '',
+  actualWinner: string
+): { points: number; explanation: string } {
+  // If actual match hasn't been played (no score/winner set), 0 points
+  if (actualHome === '' || actualHome === null || actualAway === '' || actualAway === null || !actualWinner) {
+    return { points: 0, explanation: 'Partido no jugado' };
+  }
+
+  // Check if the teams match (order-independent)
+  const predTeams = [predTeam1.toLowerCase(), predTeam2.toLowerCase()].sort();
+  const actualTeams = [actualTeam1.toLowerCase(), actualTeam2.toLowerCase()].sort();
+
+  if (predTeams[0] !== actualTeams[0] || predTeams[1] !== actualTeams[1]) {
+    return { points: 0, explanation: 'Equipos del cruce incorrectos' };
+  }
+
+  const pHome = Number(predHome);
+  const pAway = Number(predAway);
+  const aHome = Number(actualHome);
+  const aAway = Number(actualAway);
+
+  // Exact Match (+3 pts): scores match AND the winner matches
+  if (pHome === aHome && pAway === aAway && predWinner.toLowerCase() === actualWinner.toLowerCase()) {
+    return { points: 3, explanation: '¡Marcador exacto! (+3 PTS)' };
+  }
+
+  // Correct Winner/Outcome (+1 pt)
+  if (predWinner.toLowerCase() === actualWinner.toLowerCase()) {
+    return { points: 1, explanation: 'Ganador acertado (+1 PT)' };
+  }
+
+  // Wrong Winner (0 pts)
+  return { points: 0, explanation: 'Ganador incorrecto (0 PTS)' };
 }
