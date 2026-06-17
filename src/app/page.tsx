@@ -37,6 +37,10 @@ export default function QuinielaPage() {
   const [leaderboard, setLeaderboard] = useState<any[]>([]);
   const [leaderboardLoading, setLeaderboardLoading] = useState<boolean>(true);
 
+  // Interactive Tutorial State
+  const [showTutorial, setShowTutorial] = useState<boolean>(false);
+  const [tutorialStep, setTutorialStep] = useState<number>(0);
+
   // Loading States
   const [loading, setLoading] = useState<boolean>(true);
   const [saving, setSaving] = useState<boolean>(false);
@@ -185,6 +189,43 @@ export default function QuinielaPage() {
       setLoading(false);
     }
   }, [currentUser, selectedParticipantId]);
+
+  // Check if user has seen tutorial once logged in
+  useEffect(() => {
+    if (currentUser) {
+      const hasSeen = localStorage.getItem('hasSeenTutorial_2026');
+      if (hasSeen !== 'true') {
+        setShowTutorial(true);
+        setTutorialStep(0);
+      }
+    } else {
+      setShowTutorial(false);
+    }
+  }, [currentUser]);
+
+  const handleSkipTutorial = () => {
+    localStorage.setItem('hasSeenTutorial_2026', 'true');
+    setShowTutorial(false);
+  };
+
+  const handleNextTutorial = () => {
+    if (tutorialStep < 4) {
+      setTutorialStep(prev => prev + 1);
+    } else {
+      handleSkipTutorial();
+    }
+  };
+
+  const handlePrevTutorial = () => {
+    if (tutorialStep > 0) {
+      setTutorialStep(prev => prev - 1);
+    }
+  };
+
+  const handleStartTutorial = () => {
+    setTutorialStep(0);
+    setShowTutorial(true);
+  };
 
   // Smart Polling Effect to update scores dynamically
   useEffect(() => {
@@ -842,6 +883,98 @@ export default function QuinielaPage() {
           style={{ objectFit: 'cover', opacity: 0.18 }}
         />
       </div>
+
+      {/* Interactive Tutorial Overlay */}
+      {showTutorial && (
+        <div className={styles.tutorialOverlay}>
+          <div className={styles.tutorialCard}>
+            <div className={styles.tutorialHeader}>
+              <h3>Cómo Jugar - Paso {tutorialStep + 1} de 5</h3>
+              <button onClick={handleSkipTutorial} className={styles.tutorialCloseBtn}>×</button>
+            </div>
+            
+            <div className={styles.tutorialBody}>
+              {tutorialStep === 0 && (
+                <div>
+                  <div style={{ fontSize: '2.5rem', marginBottom: '1rem', textAlign: 'center' }}>👤</div>
+                  <h4 style={{ color: 'var(--primary)', marginBottom: '0.5rem', fontSize: '1.1rem', fontWeight: 700 }}>1. Identidad y Visualización</h4>
+                  <p style={{ lineHeight: 1.5, fontSize: '0.95rem' }}>
+                    Estás registrado como <strong>{currentUser.name}</strong>. En la esquina superior derecha puedes ver tu sesión y también seleccionar la quiniela de otros participantes para ver sus pronósticos en modo de solo lectura.
+                  </p>
+                </div>
+              )}
+              {tutorialStep === 1 && (
+                <div>
+                  <div style={{ fontSize: '2.5rem', marginBottom: '1rem', textAlign: 'center' }}>⚽</div>
+                  <h4 style={{ color: 'var(--primary)', marginBottom: '0.5rem', fontSize: '1.1rem', fontWeight: 700 }}>2. Pronosticar Fase de Grupos</h4>
+                  <p style={{ lineHeight: 1.5, fontSize: '0.95rem' }}>
+                    En la pestaña de <strong>Fase de Grupos</strong>, selecciona la letra del grupo (A - L) e ingresa tus predicciones de marcadores. Al llenar los marcadores, la tabla de posiciones del grupo se calculará automáticamente al instante.
+                  </p>
+                </div>
+              )}
+              {tutorialStep === 2 && (
+                <div>
+                  <div style={{ fontSize: '2.5rem', marginBottom: '1rem', textAlign: 'center' }}>🏆</div>
+                  <h4 style={{ color: 'var(--primary)', marginBottom: '0.5rem', fontSize: '1.1rem', fontWeight: 700 }}>3. Simulador de Eliminación Directa</h4>
+                  <p style={{ lineHeight: 1.5, fontSize: '0.95rem' }}>
+                    Una vez definidos los puestos en fase de grupos, ve a <strong>Eliminación Directa</strong>. Allí podrás predecir las llaves desde Dieciseisavos (Round of 32) hasta la Final. Haz clic sobre el escudo del equipo que crees que ganará o ingresa goles para avanzar tu llave automáticamente.
+                  </p>
+                </div>
+              )}
+              {tutorialStep === 3 && (
+                <div>
+                  <div style={{ fontSize: '2.5rem', marginBottom: '1rem', textAlign: 'center' }}>📊</div>
+                  <h4 style={{ color: 'var(--primary)', marginBottom: '0.5rem', fontSize: '1.1rem', fontWeight: 700 }}>4. Puntuaciones y Clasificación</h4>
+                  <p style={{ lineHeight: 1.5, fontSize: '0.95rem' }}>
+                    En la pestaña de <strong>Tabla de Posiciones</strong> se calcula el puntaje oficial de los participantes:
+                  </p>
+                  <ul style={{ paddingLeft: '1.2rem', marginTop: '0.5rem', fontSize: '0.9rem', lineHeight: 1.5, listStyleType: 'disc' }}>
+                    <li><strong style={{ color: '#ffffff' }}>3 Puntos:</strong> Si aciertas el marcador exacto del partido.</li>
+                    <li><strong style={{ color: '#ffffff' }}>1 Punto:</strong> Si aciertas el ganador o empate, pero no el marcador exacto.</li>
+                    <li><strong style={{ color: '#ffffff' }}>0 Puntos:</strong> Si fallas el resultado.</li>
+                  </ul>
+                </div>
+              )}
+              {tutorialStep === 4 && (
+                <div>
+                  <div style={{ fontSize: '2.5rem', marginBottom: '1rem', textAlign: 'center' }}>📰</div>
+                  <h4 style={{ color: 'var(--primary)', marginBottom: '0.5rem', fontSize: '1.1rem', fontWeight: 700 }}>5. Reseñas y Noticias en Tiempo Real</h4>
+                  <p style={{ lineHeight: 1.5, fontSize: '0.95rem' }}>
+                    En el panel de <strong>Reseñas del Mundial</strong> verás resúmenes automáticos y previas de los partidos. Estas noticias se van actualizando diariamente a medida que se juegan los partidos reales del torneo.
+                  </p>
+                </div>
+              )}
+            </div>
+            
+            <div className={styles.tutorialFooter}>
+              <button 
+                onClick={handleSkipTutorial} 
+                className={styles.tutorialBtnSkip}
+              >
+                Omitir
+              </button>
+              
+              <div style={{ display: 'flex', gap: '0.5rem' }}>
+                <button 
+                  onClick={handlePrevTutorial} 
+                  disabled={tutorialStep === 0}
+                  className={styles.tutorialBtnNav}
+                  style={{ opacity: tutorialStep === 0 ? 0.4 : 1 }}
+                >
+                  Atrás
+                </button>
+                <button 
+                  onClick={handleNextTutorial} 
+                  className={styles.tutorialBtnPrimary}
+                >
+                  {tutorialStep === 4 ? 'Finalizar' : 'Siguiente'}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       <div className={`${styles.container} ${activeTab === 'knockout' ? styles.wideContainer : ''}`}>
         {/* Floating Status Notification */}
       {statusMessage && (
@@ -900,10 +1033,17 @@ export default function QuinielaPage() {
 
           <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem', justifyContent: 'center' }}>
             <label style={{ fontSize: '0.8rem', fontWeight: 600, color: 'var(--text-secondary)' }}>Usuario Activo</label>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.8rem' }}>
               <span style={{ fontWeight: 700, color: '#ffffff' }}>👤 {currentUser.name}</span>
               <button onClick={handleLogout} className={styles.buttonSecondary} style={{ padding: '0.4rem 0.8rem', fontSize: '0.8rem' }}>
                 Cerrar Sesión
+              </button>
+              <button 
+                onClick={handleStartTutorial} 
+                className={styles.helpButton}
+                title="Cómo Jugar - Tutorial Interactivo"
+              >
+                ❓
               </button>
             </div>
           </div>
