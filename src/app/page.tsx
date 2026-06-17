@@ -874,13 +874,13 @@ export default function QuinielaPage() {
     <>
       <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, zIndex: -2, pointerEvents: 'none', overflow: 'hidden' }}>
         <Image
-          src="/images/world_cup_bg.png"
+          src="/images/world_cup_bg.jpg"
           alt="World Cup 2026 Background"
           fill
           priority
-          quality={65}
+          quality={70}
           sizes="100vw"
-          style={{ objectFit: 'cover', opacity: 0.18 }}
+          style={{ objectFit: 'cover', opacity: 0.22 }}
         />
       </div>
 
