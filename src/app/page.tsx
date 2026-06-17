@@ -90,13 +90,14 @@ export default function QuinielaPage() {
   // Parse dates relative to Chile timezone (UTC-4 in winter/June)
   const parseMatchDateChile = (dateStr: string): Date => {
     if (!dateStr) return new Date();
-    if (dateStr.includes('T')) {
+    if (dateStr.includes('T') || dateStr.includes(' ') || dateStr.includes(':')) {
       if (dateStr.endsWith('Z') || (dateStr.includes('-') && dateStr.lastIndexOf('-') > 7) || dateStr.includes('+')) {
         return new Date(dateStr);
       }
-      return new Date(`${dateStr}-04:00`);
+      return new Date(`${dateStr.replace(' ', 'T')}-04:00`);
     }
-    return new Date(`${dateStr}T00:00:00-04:00`);
+    // Si no tiene componente de hora, asumimos las 23:59:59 para mantenerlo abierto todo el día
+    return new Date(`${dateStr}T23:59:59-04:00`);
   };
 
   // Helper to determine free channels
@@ -872,7 +873,7 @@ export default function QuinielaPage() {
 
   return (
     <>
-      <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, zIndex: -2, pointerEvents: 'none', overflow: 'hidden' }}>
+      <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, zIndex: -1, pointerEvents: 'none', overflow: 'hidden' }}>
         <Image
           src="/images/world_cup_bg.jpg"
           alt="World Cup 2026 Background"

@@ -3,13 +3,14 @@ import { query, ensureInit, getDbPool } from '@/utils/db';
 
 export function parseMatchDateChile(dateStr: string): Date {
   if (!dateStr) return new Date();
-  if (dateStr.includes('T')) {
+  if (dateStr.includes('T') || dateStr.includes(' ') || dateStr.includes(':')) {
     if (dateStr.endsWith('Z') || (dateStr.includes('-') && dateStr.lastIndexOf('-') > 7) || dateStr.includes('+')) {
       return new Date(dateStr);
     }
-    return new Date(`${dateStr}-04:00`);
+    return new Date(`${dateStr.replace(' ', 'T')}-04:00`);
   }
-  return new Date(`${dateStr}T00:00:00-04:00`);
+  // Si no tiene componente de hora, asumimos las 23:59:59 para mantenerlo abierto todo el día
+  return new Date(`${dateStr}T23:59:59-04:00`);
 }
 
 export async function GET(request: Request) {
