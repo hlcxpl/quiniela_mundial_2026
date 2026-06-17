@@ -1379,32 +1379,6 @@ export default function QuinielaPage() {
         </div>
       </section>
 
-      {/* Sticky Save Button (only visible when editing own quiniela) */}
-      {isEditingOwn && (
-        <div style={{
-          display: 'flex',
-          justifyContent: 'space-between',
-          alignItems: 'center',
-          background: 'rgba(16, 24, 40, 0.4)',
-          border: '1px solid var(--border-color)',
-          padding: '0.75rem 1.25rem',
-          borderRadius: '12px',
-          marginBottom: '2rem',
-          backdropFilter: 'blur(4px)'
-        }}>
-          <span style={{ fontSize: '0.9rem', color: 'var(--text-secondary)' }}>
-            {saving ? 'Guardando predicciones...' : `Tienes cambios pendientes en tu quiniela`}
-          </span>
-          <button 
-            onClick={handleSavePredictions} 
-            disabled={saving} 
-            className={styles.button}
-            style={{ boxShadow: '0 0 15px rgba(16, 185, 129, 0.3)' }}
-          >
-            {saving ? 'Guardando...' : '💾 Guardar Predicciones'}
-          </button>
-        </div>
-      )}
 
       {/* Tabs */}
       <nav className={styles.tabs}>
@@ -1714,6 +1688,31 @@ export default function QuinielaPage() {
                   );
                 })}
               </div>
+
+              {/* Save button below the predictions list */}
+              {isEditingOwn && (
+                <div style={{
+                  display: 'flex',
+                  justifyContent: 'flex-end',
+                  alignItems: 'center',
+                  gap: '1rem',
+                  marginTop: '1rem',
+                  paddingTop: '1rem',
+                  borderTop: '1px solid rgba(255,255,255,0.06)'
+                }}>
+                  <span style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', flex: 1 }}>
+                    {saving ? '⏳ Guardando...' : '💡 Recuerda guardar tus cambios'}
+                  </span>
+                  <button
+                    onClick={handleSavePredictions}
+                    disabled={saving}
+                    className={styles.button}
+                    style={{ boxShadow: '0 0 15px rgba(16, 185, 129, 0.3)' }}
+                  >
+                    {saving ? 'Guardando...' : '💾 Guardar Predicciones'}
+                  </button>
+                </div>
+              )}
             </div>
           </div>
         </div>
