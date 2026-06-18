@@ -131,6 +131,20 @@ export default function QuinielaPage() {
     return channels;
   };
 
+  // Helper to determine paid channels
+  const getPaidBroadcasters = (match: Match): string[] => {
+    const channels = ['Disney+ (ESPN)', 'DGO (DirecTV Go)', 'Paramount+'];
+    const home = match.homeTeam.toLowerCase();
+    const away = match.awayTeam.toLowerCase();
+    
+    if (home.includes('mexico') || away.includes('mexico') || home.includes('united states') || away.includes('united states') || home.includes('usa') || away.includes('usa')) {
+      channels.unshift('ViX Premium', 'Peacock', 'FuboTV');
+    } else {
+      channels.unshift('DSports');
+    }
+    return channels;
+  };
+
   // Load user from localStorage and fetch news on mount
   useEffect(() => {
     const storedUser = localStorage.getItem('quiniela_user');
@@ -1488,8 +1502,13 @@ export default function QuinielaPage() {
                             <span style={{ fontSize: '1.5rem' }}>{awayTeamData.flag}</span>
                           </div>
                         </div>
-                        <div style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>
-                          📺 <strong>Ver gratis:</strong> {channels.join(', ')}
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem', alignItems: 'flex-end' }}>
+                          <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>
+                            📺 <strong>Ver gratis:</strong> {channels.join(', ')}
+                          </div>
+                          <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>
+                            💳 <strong>Pago:</strong> {getPaidBroadcasters(lm).slice(0, 3).join(', ')}
+                          </div>
                         </div>
                       </div>
                     );
@@ -1618,11 +1637,16 @@ export default function QuinielaPage() {
                           )}
                         </div>
 
-                        {/* Free Broadcasters Info */}
+                        {/* Free & Paid Broadcasters Info */}
                         {match.status === 'UPCOMING' && (
-                          <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', marginBottom: '0.4rem' }}>
-                            📺 <strong>Canales gratis:</strong> {getFreeBroadcasters(match).slice(0, 3).join(', ')}
-                          </div>
+                          <>
+                            <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', marginBottom: '0.2rem' }}>
+                              📺 <strong>Canales gratis:</strong> {getFreeBroadcasters(match).slice(0, 3).join(', ')}
+                            </div>
+                            <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', marginBottom: '0.4rem' }}>
+                              💳 <strong>Streaming / Pago:</strong> {getPaidBroadcasters(match).slice(0, 4).join(', ')}
+                            </div>
+                          </>
                         )}
 
                         {/* Match teams and inputs */}
