@@ -296,9 +296,11 @@ export default function QuinielaPage() {
           const kickoff = parseMatchDateChile(match.matchDate);
           // Standard soccer match duration including halftime & extra time = ~130 minutes
           const endTime = new Date(kickoff.getTime() + 130 * 60 * 1000);
+          // Grace period of 30 minutes post-match to fetch late updates and avoid incomplete scores
+          const gracePeriodEndTime = new Date(endTime.getTime() + 30 * 60 * 1000);
 
           if (match.status !== 'PLAYED') {
-            if (now >= kickoff && now <= endTime) {
+            if (now >= kickoff && now <= gracePeriodEndTime) {
               hasLiveMatch = true;
             } else if (now < kickoff) {
               if (!nextKickoffTime || kickoff < nextKickoffTime) {
