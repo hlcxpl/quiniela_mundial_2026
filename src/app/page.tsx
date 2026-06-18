@@ -1637,7 +1637,7 @@ export default function QuinielaPage() {
                                 type="number"
                                 min="0"
                                 max="20"
-                                value={match.status === 'PLAYED' ? (match.homeScore !== null ? match.homeScore : '') : predHome}
+                                value={predHome}
                                 onChange={(e) => handlePredictionChange(match.id, true, e.target.value)}
                                 className={styles.scoreInput}
                                 placeholder="-"
@@ -1648,7 +1648,7 @@ export default function QuinielaPage() {
                                 type="number"
                                 min="0"
                                 max="20"
-                                value={match.status === 'PLAYED' ? (match.awayScore !== null ? match.awayScore : '') : predAway}
+                                value={predAway}
                                 onChange={(e) => handlePredictionChange(match.id, false, e.target.value)}
                                 className={styles.scoreInput}
                                 placeholder="-"
@@ -1667,9 +1667,9 @@ export default function QuinielaPage() {
                       {match.status === 'PLAYED' && (
                         <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.4rem', borderLeft: '1px solid rgba(255,255,255,0.06)', paddingLeft: '1rem', minWidth: '95px' }}>
                           <div className={styles.playedResult}>
-                            <span className={styles.actualScoreLabel}>Predicción</span>
-                            <span className={styles.actualScoreValue} style={{ background: 'rgba(255,255,255,0.05)', color: 'var(--text-secondary)' }}>
-                              {pred ? `${pred.predictedHomeScore} - ${pred.predictedAwayScore}` : 'Sin pred.'}
+                            <span className={styles.actualScoreLabel}>Resultado</span>
+                            <span className={styles.actualScoreValue}>
+                              {match.homeScore !== null && match.awayScore !== null ? `${match.homeScore} - ${match.awayScore}` : '-'}
                             </span>
                           </div>
                           

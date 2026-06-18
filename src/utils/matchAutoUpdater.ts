@@ -27,44 +27,7 @@ function generateRealisticScore(): number {
  * pero que siguen marcados como 'UPCOMING'.
  */
 export async function autoUpdateMatches() {
-  try {
-    await ensureInit();
-
-    // Buscamos todos los partidos marcados como 'UPCOMING'
-    const res = await query(
-      "SELECT id, home_score, away_score, home_team, away_team, match_date FROM matches WHERE status = 'UPCOMING'"
-    );
-
-    const now = new Date();
-    // Filtramos los partidos que ya deberían haber terminado (2 horas desde el kickoff)
-    const expiredMatches = res.rows.filter(match => {
-      const kickoff = parseMatchDate(match.match_date);
-      const twoHoursLater = new Date(kickoff.getTime() + 2 * 60 * 60 * 1000);
-      return twoHoursLater <= now;
-    });
-
-    if (expiredMatches.length === 0) {
-      return;
-    }
-
-    for (const match of expiredMatches) {
-      let homeScore = match.home_score;
-      let awayScore = match.away_score;
-
-      // Si no tienen marcador asignado, generamos uno realista
-      if (homeScore === null || awayScore === null) {
-        homeScore = generateRealisticScore();
-        awayScore = generateRealisticScore();
-      }
-
-      console.log(`[AutoUpdater] Simulando Partido ID ${match.id}: ${match.home_team} ${homeScore} - ${awayScore} ${match.away_team}`);
-
-      await query(
-        "UPDATE matches SET status = 'PLAYED', home_score = $1, away_score = $2 WHERE id = $3",
-        [homeScore, awayScore, match.id]
-      );
-    }
-  } catch (error) {
-    console.error('[AutoUpdater] Error en la actualización automática de partidos:', error);
-  }
+  // Deshabilitado para evitar la simulación de scores aleatorios.
+  // Los marcadores oficiales son ingresados manualmente por el administrador en la pestaña Admin.
+  return;
 }
