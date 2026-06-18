@@ -27,6 +27,7 @@ export default function QuinielaPage() {
   const [activeGroup, setActiveGroup] = useState<string>('A');
   const [bracketZoom, setBracketZoom] = useState<number>(0.7);
   const [adminSubTab, setAdminSubTab] = useState<'groups' | 'knockout'>('groups');
+  const [countrySearch, setCountrySearch] = useState<string>('');
 
   // Backend Data State
   const [participants, setParticipants] = useState<Participant[]>([]);
@@ -1431,6 +1432,141 @@ export default function QuinielaPage() {
       {/* Tab Contents: Groups View */}
       {activeTab === 'groups' && (
         <div className="animate-slide-up">
+          {/* Buscador de Selección/País */}
+          <div style={{
+            marginBottom: '1.5rem',
+            background: 'var(--bg-surface)',
+            border: '1px solid var(--border-color)',
+            padding: '1rem',
+            borderRadius: '16px',
+            display: 'flex',
+            flexDirection: 'column',
+            gap: '0.75rem',
+            boxShadow: 'var(--card-shadow)',
+            position: 'relative'
+          }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+              <span style={{ fontSize: '1.1rem' }}>🔍</span>
+              <span style={{ fontSize: '0.9rem', fontWeight: 700, color: '#ffffff' }}>Buscar Grupo por País</span>
+            </div>
+            <div style={{ position: 'relative' }}>
+              <input
+                type="text"
+                placeholder="Escribe el nombre de un país (ej. Portugal, Inglaterra, México...)"
+                value={countrySearch}
+                onChange={(e) => setCountrySearch(e.target.value)}
+                style={{
+                  width: '100%',
+                  padding: '0.75rem 1rem',
+                  borderRadius: '10px',
+                  background: 'rgba(0, 0, 0, 0.25)',
+                  border: '1px solid var(--border-color)',
+                  color: '#ffffff',
+                  fontSize: '0.9rem',
+                  outline: 'none',
+                  transition: 'border-color 0.2s'
+                }}
+              />
+              
+              {/* Resultados de búsqueda */}
+              {countrySearch.trim().length > 0 && (() => {
+                const query = countrySearch.toLowerCase().trim();
+                const matchedTeams: { team: string; flag: string; group: string }[] = [];
+                
+                Object.entries(GROUPS).forEach(([groupName, teams]) => {
+                  teams.forEach(team => {
+                    const teamData = TEAMS[team] || { flag: '' };
+                    if (team.toLowerCase().includes(query)) {
+                      matchedTeams.push({ team, flag: teamData.flag, group: groupName });
+                    }
+                  });
+                });
+                
+                if (matchedTeams.length === 0) {
+                  return (
+                    <div style={{
+                      position: 'absolute',
+                      top: '100%',
+                      left: 0,
+                      right: 0,
+                      background: 'rgba(16, 24, 40, 0.95)',
+                      backdropFilter: 'blur(10px)',
+                      border: '1px solid var(--border-color)',
+                      borderRadius: '10px',
+                      padding: '0.75rem',
+                      marginTop: '0.5rem',
+                      color: 'var(--text-secondary)',
+                      fontSize: '0.85rem',
+                      zIndex: 10,
+                      boxShadow: '0 10px 25px rgba(0,0,0,0.5)'
+                    }}>
+                      No se encontraron países que coincidan con tu búsqueda.
+                    </div>
+                  );
+                }
+                
+                return (
+                  <div style={{
+                    position: 'absolute',
+                    top: '100%',
+                    left: 0,
+                    right: 0,
+                    background: 'rgba(16, 24, 40, 0.95)',
+                    backdropFilter: 'blur(10px)',
+                    border: '1px solid var(--border-color)',
+                    borderRadius: '10px',
+                    marginTop: '0.5rem',
+                    zIndex: 10,
+                    maxHeight: '200px',
+                    overflowY: 'auto',
+                    boxShadow: '0 10px 25px rgba(0,0,0,0.5)',
+                    display: 'flex',
+                    flexDirection: 'column'
+                  }}>
+                    {matchedTeams.map(m => (
+                      <button
+                        key={`${m.team}-${m.group}`}
+                        onClick={() => {
+                          setActiveGroup(m.group);
+                          setCountrySearch('');
+                        }}
+                        style={{
+                          background: 'none',
+                          border: 'none',
+                          color: '#ffffff',
+                          padding: '0.75rem 1rem',
+                          textAlign: 'left',
+                          cursor: 'pointer',
+                          fontSize: '0.9rem',
+                          display: 'flex',
+                          justifyContent: 'space-between',
+                          alignItems: 'center',
+                          borderBottom: '1px solid rgba(255,255,255,0.05)'
+                        }}
+                        onMouseEnter={(e) => e.currentTarget.style.background = 'rgba(16, 185, 129, 0.15)'}
+                        onMouseLeave={(e) => e.currentTarget.style.background = 'none'}
+                      >
+                        <span style={{ fontWeight: 600 }}>
+                          {m.flag} {m.team}
+                        </span>
+                        <span style={{
+                          background: 'var(--primary)',
+                          color: '#ffffff',
+                          padding: '0.2rem 0.5rem',
+                          borderRadius: '6px',
+                          fontSize: '0.75rem',
+                          fontWeight: 700
+                        }}>
+                          Grupo {m.group}
+                        </span>
+                      </button>
+                    ))}
+                  </div>
+                );
+              })()}
+            </div>
+          </div>
+
           {/* Groups Horizontal Selector */}
           <div style={{ display: 'flex', gap: '0.4rem', overflowX: 'auto', paddingBottom: '1.2rem', marginBottom: '1.5rem', borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
             {Object.keys(GROUPS).map(g => (
